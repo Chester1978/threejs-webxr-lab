@@ -1,0 +1,19 @@
+{
+  "name": "threejs-webxr-lab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:pages": "vite build --mode github-pages",
+    "preview": "vite preview",
+    "serve:lan": "python serve_lab.py"
+  },
+  "dependencies": {
+    "three": "^0.176.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}
