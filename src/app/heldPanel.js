@@ -6,7 +6,7 @@ export function createHeldPanel(scene) {
   scene.add(panelRoot);
 
   const panelBackground = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.3, 1.65),
+    new THREE.PlaneGeometry(0.44, 0.58),
     new THREE.MeshStandardMaterial({
       color: "#102033",
       emissive: "#08111c",
@@ -19,24 +19,25 @@ export function createHeldPanel(scene) {
   );
   panelRoot.add(panelBackground);
 
-  const title = createPanelButton("Painel", 0.95, "#cfe3ff", "#173256");
+  const title = createPanelButton("Painel", 0.13, "#cfe3ff", "#173256");
+  title.position.set(0, 0.21, 0.01);
   title.userData = { kind: "label" };
   panelRoot.add(title);
 
   const toggleButtons = [];
   const columns = 4;
   const rows = 5;
-  const xStart = -0.45;
-  const yStart = 0.52;
-  const xGap = 0.3;
-  const yGap = 0.24;
+  const xStart = -0.15;
+  const yStart = 0.1;
+  const xGap = 0.1;
+  const yGap = 0.085;
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < columns; col += 1) {
       const index = row * columns + col;
       const button = createPanelButton(
         `T${String(index + 1).padStart(2, "0")}`,
-        0.22,
+        0.06,
         "#f2f7ff",
         "#1b3150",
       );
@@ -52,15 +53,18 @@ export function createHeldPanel(scene) {
     }
   }
 
-  const finishButton = createPanelButton("Finalizar", 0.3, "#fff2f2", "#7d1717");
-  finishButton.position.set(0, -0.68, 0.01);
+  const finishButton = createPanelButton("Finalizar", 0.08, "#fff2f2", "#7d1717");
+  finishButton.position.set(0, -0.23, 0.01);
   finishButton.userData = { kind: "finish" };
   panelRoot.add(finishButton);
 
   const tempVector = new THREE.Vector3();
+  const tempVector2 = new THREE.Vector3();
+  const tempVector3 = new THREE.Vector3();
   let active = false;
   let suspendedUntilRelease = false;
   let holderHandedness = null;
+  let justOpened = false;
 
   function beginHold(handState, options = {}) {
     const requireOpen = options.requireOpen ?? true;
@@ -74,6 +78,7 @@ export function createHeldPanel(scene) {
     }
 
     active = true;
+    justOpened = true;
     holderHandedness = handState.hand.userData.handedness ?? null;
     panelRoot.visible = true;
     updatePose(handState);
@@ -85,9 +90,14 @@ export function createHeldPanel(scene) {
       return;
     }
 
+    const side = handState.hand.userData.handedness === "left" ? -1 : 1;
+    tempVector2.copy(handState.rayDirection).normalize();
+    tempVector3.set(tempVector2.z, 0, -tempVector2.x).normalize();
+
     panelRoot.position.copy(handState.pinchWorld);
-    panelRoot.position.addScaledVector(handState.rayDirection, 0.18);
-    panelRoot.position.y += 0.02;
+    panelRoot.position.addScaledVector(tempVector3, side * 0.09);
+    panelRoot.position.addScaledVector(tempVector2, 0.06);
+    panelRoot.position.y += 0.01;
 
     xrCamera.getWorldPosition(tempVector);
     panelRoot.lookAt(tempVector);
@@ -95,12 +105,14 @@ export function createHeldPanel(scene) {
 
   function releaseHold() {
     active = false;
+    justOpened = false;
     holderHandedness = null;
     panelRoot.visible = false;
   }
 
   function finish() {
     active = false;
+    justOpened = false;
     holderHandedness = null;
     panelRoot.visible = false;
     suspendedUntilRelease = true;
@@ -114,7 +126,7 @@ export function createHeldPanel(scene) {
   }
 
   function handleSelect(object) {
-    if (!object || !panelRoot.visible) {
+    if (!object || !panelRoot.visible || justOpened) {
       return false;
     }
 
@@ -132,12 +144,17 @@ export function createHeldPanel(scene) {
     return false;
   }
 
+  function endOpenGuard() {
+    justOpened = false;
+  }
+
   return {
     beginHold,
     updatePose,
     releaseHold,
     onHolderPinchReleased,
     handleSelect,
+    endOpenGuard,
     isActive: () => active,
     getHolderHandedness: () => holderHandedness,
     getInteractables: () => (panelRoot.visible ? [...toggleButtons, finishButton] : []),
@@ -145,7 +162,7 @@ export function createHeldPanel(scene) {
 }
 
 function createPanelButton(label, height, textColor, fillColor) {
-  const width = label === "Painel" ? 0.92 : label === "Finalizar" ? 0.86 : 0.24;
+  const width = label === "Painel" ? 0.3 : label === "Finalizar" ? 0.26 : 0.075;
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(width, height),
     new THREE.MeshStandardMaterial({
@@ -189,7 +206,12 @@ function makeButtonTexture(label, textColor, fillColor) {
   ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
 
   ctx.fillStyle = textColor;
-  ctx.font = "700 54px Segoe UI";
+  ctx.font =
+    label === "Finalizar"
+      ? "700 48px Segoe UI"
+      : label === "Painel"
+        ? "700 52px Segoe UI"
+        : "700 44px Segoe UI";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(label, canvas.width / 2, canvas.height / 2);
