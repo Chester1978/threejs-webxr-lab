@@ -9,6 +9,7 @@ export function createXRHandGestures({
   interactables = [],
   onHoverChange = () => {},
   onSelect = () => {},
+  onFrame = () => {},
 }) {
   const handModelFactory = new XRHandModelFactory();
   const tempVectorA = new THREE.Vector3();
@@ -24,6 +25,13 @@ export function createXRHandGestures({
   const hands = [0, 1].map((index) => {
     const hand = renderer.xr.getHand(index);
     hand.userData.index = index;
+    hand.userData.handedness = null;
+    hand.addEventListener("connected", (event) => {
+      hand.userData.handedness = event.data?.handedness ?? null;
+    });
+    hand.addEventListener("disconnected", () => {
+      hand.userData.handedness = null;
+    });
     hand.add(handModelFactory.createHandModel(hand, "spheres"));
     scene.add(hand);
 
@@ -41,6 +49,7 @@ export function createXRHandGestures({
       hoveredObject: null,
       isPinching: false,
       wasPinching: false,
+      isOpen: false,
     };
   });
 
@@ -80,6 +89,7 @@ export function createXRHandGestures({
 
     handState.isPinching =
       handState.thumbWorld.distanceTo(handState.indexWorld) < pinchThreshold;
+    handState.isOpen = getIsOpenHand(handState);
 
     handState.rayDirection
       .copy(handState.indexWorld)
@@ -101,6 +111,7 @@ export function createXRHandGestures({
     gesture.handIndex = -1;
     hands.forEach((handState) => {
       handState.wasPinching = false;
+      handState.isOpen = false;
       handState.ray.visible = false;
       setHandHover(handState, null);
     });
@@ -198,9 +209,12 @@ export function createXRHandGestures({
   }
 
   function getRayHit(handState) {
+    const targets =
+      typeof interactables === "function" ? interactables() : interactables;
+
     raycaster.set(handState.pinchWorld, handState.rayDirection);
     raycaster.far = maxRayDistance;
-    return raycaster.intersectObjects(interactables)[0] ?? null;
+    return raycaster.intersectObjects(targets)[0] ?? null;
   }
 
   function updateRayInteractions(activeHands) {
@@ -216,7 +230,7 @@ export function createXRHandGestures({
         setHandHover(handState, hit?.object ?? null);
 
         if (handState.isPinching && !handState.wasPinching && hit) {
-          onSelect(hit.object);
+          onSelect(hit.object, handState);
         }
       } else {
         setHandHover(handState, null);
@@ -234,6 +248,7 @@ export function createXRHandGestures({
       return updateHandState(handState);
     });
     const activeHands = trackedHands.filter((handState) => handState.isPinching);
+    onFrame(trackedHands);
 
     if (activeHands.length === 2) {
       onHoverChange([]);
@@ -266,6 +281,40 @@ export function createXRHandGestures({
   renderer.xr.addEventListener("sessionend", clear);
 
   return { update, clear };
+}
+
+function getIsOpenHand(handState) {
+  const hand = handState.hand;
+  const wrist = hand.joints?.wrist;
+  const tipNames = [
+    "index-finger-tip",
+    "middle-finger-tip",
+    "ring-finger-tip",
+    "pinky-finger-tip",
+  ];
+
+  if (!wrist || !wrist.visible) {
+    return false;
+  }
+
+  const wristWorld = handState.wristWorld;
+  let extendedCount = 0;
+
+  for (const tipName of tipNames) {
+    const tip = hand.joints?.[tipName];
+    if (!tip || !tip.visible) {
+      return false;
+    }
+
+    const tipWorld = new THREE.Vector3();
+    tip.getWorldPosition(tipWorld);
+
+    if (tipWorld.distanceTo(wristWorld) > 0.1) {
+      extendedCount += 1;
+    }
+  }
+
+  return extendedCount === tipNames.length && !handState.isPinching;
 }
 
 function createHandRay() {

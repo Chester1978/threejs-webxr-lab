@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createDesktopControls } from "./desktopControls.js";
+import { createHeldPanel } from "./heldPanel.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createXRHandGestures } from "./xrHands.js";
 
@@ -31,26 +32,42 @@ export function createApp() {
   const pointer = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   let hoveredButton = null;
+  let latestTrackedHands = [];
 
   const controlsHint = document.querySelector("#controls-hint");
   if (controlsHint) {
     controlsHint.textContent =
-      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. VR: use o raio da mao para apontar; pinca para clicar. Pinca no chao para puxar o mundo; com duas maos, gire e aproxime/afaste.";
+      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. VR: use o raio da mao para apontar; pinca para clicar. Mao esquerda aberta + pinca segura um painel. Pinca no chao para puxar o mundo; com duas maos, gire e aproxime/afaste.";
   }
 
   const wallButtons = createWallButtons(worldRoot, shapes);
   const desktopControls = createDesktopControls(camera);
+  const heldPanel = createHeldPanel(scene);
   const xrHands = createXRHandGestures({
     renderer,
     scene,
     worldRoot,
     floor,
-    interactables: wallButtons,
+    interactables: () => [...wallButtons, ...heldPanel.getInteractables()],
     onHoverChange: (hoveredObjects) => {
       setHoveredButton(hoveredObjects[0] ?? null);
     },
-    onSelect: (object) => {
+    onSelect: (object, handState) => {
+      if (
+        handState?.hand?.userData?.handedness === "left" &&
+        heldPanel.isActive()
+      ) {
+        return;
+      }
+
+      if (heldPanel.handleSelect(object)) {
+        return;
+      }
+
       setShapeColor(object.userData.shape);
+    },
+    onFrame: (trackedHands) => {
+      latestTrackedHands = trackedHands;
     },
   });
 
@@ -122,6 +139,21 @@ export function createApp() {
 
     if (renderer.xr.isPresenting) {
       xrHands.update();
+      const leftHand = latestTrackedHands.find(
+        (handState) => handState.hand.userData.handedness === "left",
+      );
+
+      if (leftHand?.isOpen && leftHand.isPinching && !heldPanel.isActive()) {
+        heldPanel.beginHold(leftHand);
+      }
+
+      if (heldPanel.isActive()) {
+        if (leftHand?.isPinching) {
+          heldPanel.updatePose(leftHand, renderer.xr.getCamera(camera));
+        } else {
+          heldPanel.onLeftPinchReleased();
+        }
+      }
     } else {
       desktopControls.update(delta);
     }
