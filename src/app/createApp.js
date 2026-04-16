@@ -5,7 +5,7 @@ import { createHeldPanel } from "./heldPanel.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 3;
+const APP_VERSION = 4;
 
 export function createApp() {
   const { scene, worldRoot, floor, objects, shapes, palette } = createSceneWorld();
@@ -69,7 +69,15 @@ export function createApp() {
       }
 
       if (object.userData.action === "open-panel") {
-        heldPanel.beginHold(handState, { requireOpen: false });
+        if (heldPanel.isActive()) {
+          heldPanel.close();
+        } else {
+          heldPanel.beginHold(handState, {
+            requireOpen: false,
+            persistent: true,
+            handedness: "left",
+          });
+        }
         return;
       }
 
@@ -164,13 +172,25 @@ export function createApp() {
         (handState) => handState.hand.userData.handedness === heldPanel.getHolderHandedness(),
       );
 
-      if (leftHand?.isOpen && leftHand.isPinching && !heldPanel.isActive()) {
+      if (
+        leftHand?.isOpen &&
+        leftHand.isPinching &&
+        !heldPanel.isActive()
+      ) {
         heldPanel.beginHold(leftHand);
       }
 
       if (heldPanel.isActive()) {
-        if (holderHand?.isPinching) {
-          heldPanel.updatePose(holderHand, renderer.xr.getCamera(camera));
+        const xrCamera = renderer.xr.getCamera(camera);
+        if (heldPanel.isPersistent()) {
+          // Wall-button-activated tablet: follows the left hand as long as it
+          // is tracked, no pinch required.
+          if (holderHand) {
+            heldPanel.updatePose(holderHand, xrCamera);
+            heldPanel.endOpenGuard();
+          }
+        } else if (holderHand?.isPinching) {
+          heldPanel.updatePose(holderHand, xrCamera);
           heldPanel.endOpenGuard();
         } else {
           heldPanel.onHolderPinchReleased();

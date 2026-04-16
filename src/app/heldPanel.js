@@ -62,66 +62,84 @@ export function createHeldPanel(scene) {
   const tempVector2 = new THREE.Vector3();
   const tempVector3 = new THREE.Vector3();
   let active = false;
+  let persistent = false;
   let suspendedUntilRelease = false;
   let holderHandedness = null;
   let justOpened = false;
 
   function beginHold(handState, options = {}) {
     const requireOpen = options.requireOpen ?? true;
+    const wantPersistent = options.persistent ?? false;
+    const forcedHandedness = options.handedness ?? null;
 
-    if (
-      suspendedUntilRelease ||
-      !handState?.isPinching ||
-      (requireOpen && !handState.isOpen)
-    ) {
-      return false;
+    // Persistent mode is reserved for explicit UI opens (e.g. wall button);
+    // it does not require an active pinch or open hand.
+    if (!wantPersistent) {
+      if (
+        suspendedUntilRelease ||
+        !handState?.isPinching ||
+        (requireOpen && !handState.isOpen)
+      ) {
+        return false;
+      }
     }
 
     active = true;
+    persistent = wantPersistent;
     justOpened = true;
-    holderHandedness = handState.hand.userData.handedness ?? null;
-    panelRoot.visible = true;
-    updatePose(handState);
+    holderHandedness =
+      forcedHandedness ?? handState?.hand?.userData?.handedness ?? null;
+    // Start hidden; the animation loop will place + reveal it once it has a
+    // valid xrCamera and holder hand.
+    panelRoot.visible = false;
     return true;
   }
 
   function updatePose(handState, xrCamera) {
-    if (!active || !handState) {
+    if (!active || !handState || !xrCamera) {
       return;
     }
 
-    const side = handState.hand.userData.handedness === "left" ? -1 : 1;
+    const handedness = handState.hand.userData.handedness;
+    const side = handedness === "left" ? -1 : 1;
+    // rayDirection ~ wrist -> index-finger-tip (forward along the hand)
     tempVector2.copy(handState.rayDirection).normalize();
+    // horizontal "outward" axis relative to the ray, kept level with the ground
     tempVector3.set(tempVector2.z, 0, -tempVector2.x).normalize();
 
-    panelRoot.position.copy(handState.pinchWorld);
+    // Anchor over the palm (wrist is more stable than the pinch point)
+    panelRoot.position.copy(handState.wristWorld);
     panelRoot.position.addScaledVector(tempVector3, side * 0.09);
-    panelRoot.position.addScaledVector(tempVector2, 0.06);
-    panelRoot.position.y += 0.01;
+    panelRoot.position.addScaledVector(tempVector2, 0.08);
+    panelRoot.position.y += 0.05;
 
     xrCamera.getWorldPosition(tempVector);
     panelRoot.lookAt(tempVector);
+
+    panelRoot.visible = true;
   }
 
-  function releaseHold() {
+  function close() {
     active = false;
+    persistent = false;
     justOpened = false;
     holderHandedness = null;
     panelRoot.visible = false;
   }
 
   function finish() {
-    active = false;
-    justOpened = false;
-    holderHandedness = null;
-    panelRoot.visible = false;
-    suspendedUntilRelease = true;
+    const wasPersistent = persistent;
+    close();
+    // Only block the pinch-hold gesture from immediately re-triggering.
+    if (!wasPersistent) {
+      suspendedUntilRelease = true;
+    }
   }
 
   function onHolderPinchReleased() {
     suspendedUntilRelease = false;
-    if (active) {
-      releaseHold();
+    if (active && !persistent) {
+      close();
     }
   }
 
@@ -151,11 +169,12 @@ export function createHeldPanel(scene) {
   return {
     beginHold,
     updatePose,
-    releaseHold,
+    close,
     onHolderPinchReleased,
     handleSelect,
     endOpenGuard,
     isActive: () => active,
+    isPersistent: () => persistent,
     getHolderHandedness: () => holderHandedness,
     getInteractables: () => (panelRoot.visible ? [...toggleButtons, finishButton] : []),
   };
