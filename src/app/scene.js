@@ -101,6 +101,12 @@ export function createSceneWorld() {
 
   const objects = [pyramid, square, cylinder];
 
+  // Spawn the VR user behind the podium and above the virtual floor so they
+  // see the shapes and wall in front of them instead of standing on top of
+  // the shapes. worldRoot.y = 1.15 lines the scene floor up with the real
+  // floor (local-floor reference); z = -3.5 pushes the podium forward.
+  worldRoot.position.set(0, 1.15, -3.5);
+
   return {
     scene,
     worldRoot,
