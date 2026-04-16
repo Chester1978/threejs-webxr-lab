@@ -5,7 +5,7 @@ import { createHeldPanel } from "./heldPanel.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 7;
+const APP_VERSION = 8;
 
 export function createApp() {
   const { scene, worldRoot, objects, shapes, palette } = createSceneWorld();
