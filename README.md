@@ -73,3 +73,23 @@ http://192.168.0.25:8000
 
 - O botao de VR depende de suporte a `WebXR` no navegador/dispositivo.
 - `WebXR` exige contexto seguro. Em geral, para teste fora de `localhost`, pode ser necessario usar `HTTPS`.
+
+## Estrutura do codigo
+
+Infra de laboratorio:
+
+- `vite`
+- `Flask`
+- scripts `.bat`
+- workflow do GitHub Pages
+
+Codigo reaproveitavel:
+
+- [src/app/scene.js](C:\Users\Christoph Cury\source\2026\threejs-webxr-lab\src\app\scene.js): cria a cena, luzes, mundo e objetos
+- [src/app/desktopControls.js](C:\Users\Christoph Cury\source\2026\threejs-webxr-lab\src\app\desktopControls.js): navegacao por teclado
+- [src/app/xrHands.js](C:\Users\Christoph Cury\source\2026\threejs-webxr-lab\src\app\xrHands.js): gestos de maos para VR
+- [src/app/createApp.js](C:\Users\Christoph Cury\source\2026\threejs-webxr-lab\src\app\createApp.js): composicao da aplicacao
+
+Bootstrap fino:
+
+- [src/main.js](C:\Users\Christoph Cury\source\2026\threejs-webxr-lab\src\main.js): apenas inicia a app
