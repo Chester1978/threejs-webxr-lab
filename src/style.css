@@ -49,6 +49,20 @@ canvas {
   color: #8db6ff;
 }
 
+.version {
+  margin: 0 0 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.55rem;
+  border: 1px solid rgba(141, 182, 255, 0.45);
+  border-radius: 999px;
+  background: rgba(11, 25, 43, 0.7);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d8e7ff;
+}
+
 h1 {
   margin: 0;
   max-width: 12ch;

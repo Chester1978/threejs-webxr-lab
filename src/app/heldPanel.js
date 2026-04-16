@@ -60,25 +60,33 @@ export function createHeldPanel(scene) {
   const tempVector = new THREE.Vector3();
   let active = false;
   let suspendedUntilRelease = false;
+  let holderHandedness = null;
 
-  function beginHold(leftHandState) {
-    if (suspendedUntilRelease || !leftHandState.isOpen || !leftHandState.isPinching) {
+  function beginHold(handState, options = {}) {
+    const requireOpen = options.requireOpen ?? true;
+
+    if (
+      suspendedUntilRelease ||
+      !handState?.isPinching ||
+      (requireOpen && !handState.isOpen)
+    ) {
       return false;
     }
 
     active = true;
+    holderHandedness = handState.hand.userData.handedness ?? null;
     panelRoot.visible = true;
-    updatePose(leftHandState);
+    updatePose(handState);
     return true;
   }
 
-  function updatePose(leftHandState, xrCamera) {
-    if (!active || !leftHandState) {
+  function updatePose(handState, xrCamera) {
+    if (!active || !handState) {
       return;
     }
 
-    panelRoot.position.copy(leftHandState.pinchWorld);
-    panelRoot.position.addScaledVector(leftHandState.rayDirection, 0.18);
+    panelRoot.position.copy(handState.pinchWorld);
+    panelRoot.position.addScaledVector(handState.rayDirection, 0.18);
     panelRoot.position.y += 0.02;
 
     xrCamera.getWorldPosition(tempVector);
@@ -87,16 +95,18 @@ export function createHeldPanel(scene) {
 
   function releaseHold() {
     active = false;
+    holderHandedness = null;
     panelRoot.visible = false;
   }
 
   function finish() {
     active = false;
+    holderHandedness = null;
     panelRoot.visible = false;
     suspendedUntilRelease = true;
   }
 
-  function onLeftPinchReleased() {
+  function onHolderPinchReleased() {
     suspendedUntilRelease = false;
     if (active) {
       releaseHold();
@@ -126,9 +136,10 @@ export function createHeldPanel(scene) {
     beginHold,
     updatePose,
     releaseHold,
-    onLeftPinchReleased,
+    onHolderPinchReleased,
     handleSelect,
     isActive: () => active,
+    getHolderHandedness: () => holderHandedness,
     getInteractables: () => (panelRoot.visible ? [...toggleButtons, finishButton] : []),
   };
 }

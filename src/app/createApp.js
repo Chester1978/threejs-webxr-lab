@@ -5,6 +5,8 @@ import { createHeldPanel } from "./heldPanel.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createXRHandGestures } from "./xrHands.js";
 
+const APP_VERSION = 2;
+
 export function createApp() {
   const { scene, worldRoot, floor, objects, shapes, palette } = createSceneWorld();
 
@@ -33,11 +35,16 @@ export function createApp() {
   const raycaster = new THREE.Raycaster();
   let hoveredButton = null;
   let latestTrackedHands = [];
+  const versionTag = document.querySelector("#app-version");
+
+  if (versionTag) {
+    versionTag.textContent = `Versao ${APP_VERSION}`;
+  }
 
   const controlsHint = document.querySelector("#controls-hint");
   if (controlsHint) {
     controlsHint.textContent =
-      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. VR: use o raio da mao para apontar; pinca para clicar. Mao esquerda aberta + pinca segura um painel. Pinca no chao para puxar o mundo; com duas maos, gire e aproxime/afaste.";
+      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. VR: use o raio da mao para apontar; pinca para clicar. Mao esquerda aberta + pinca segura um painel, ou ative pelo botao Painel. Pinca no chao para puxar o mundo; com duas maos, gire e aproxime/afaste.";
   }
 
   const wallButtons = createWallButtons(worldRoot, shapes);
@@ -53,14 +60,23 @@ export function createApp() {
       setHoveredButton(hoveredObjects[0] ?? null);
     },
     onSelect: (object, handState) => {
-      if (
-        handState?.hand?.userData?.handedness === "left" &&
-        heldPanel.isActive()
-      ) {
+      if (!object) {
         return;
       }
 
       if (heldPanel.handleSelect(object)) {
+        return;
+      }
+
+      if (object.userData.action === "open-panel") {
+        heldPanel.beginHold(handState, { requireOpen: false });
+        return;
+      }
+
+      if (
+        heldPanel.isActive() &&
+        handState?.hand?.userData?.handedness === heldPanel.getHolderHandedness()
+      ) {
         return;
       }
 
@@ -130,6 +146,10 @@ export function createApp() {
     const hit = raycaster.intersectObjects(wallButtons)[0];
 
     if (hit) {
+      if (hit.object.userData.action === "open-panel") {
+        return;
+      }
+
       setShapeColor(hit.object.userData.shape);
     }
   });
@@ -139,8 +159,9 @@ export function createApp() {
 
     if (renderer.xr.isPresenting) {
       xrHands.update();
-      const leftHand = latestTrackedHands.find(
-        (handState) => handState.hand.userData.handedness === "left",
+      const leftHand = latestTrackedHands.find((handState) => handState.hand.userData.handedness === "left");
+      const holderHand = latestTrackedHands.find(
+        (handState) => handState.hand.userData.handedness === heldPanel.getHolderHandedness(),
       );
 
       if (leftHand?.isOpen && leftHand.isPinching && !heldPanel.isActive()) {
@@ -148,10 +169,10 @@ export function createApp() {
       }
 
       if (heldPanel.isActive()) {
-        if (leftHand?.isPinching) {
-          heldPanel.updatePose(leftHand, renderer.xr.getCamera(camera));
+        if (holderHand?.isPinching) {
+          heldPanel.updatePose(holderHand, renderer.xr.getCamera(camera));
         } else {
-          heldPanel.onLeftPinchReleased();
+          heldPanel.onHolderPinchReleased();
         }
       }
     } else {
@@ -165,13 +186,14 @@ export function createApp() {
 
 function createWallButtons(worldRoot, shapes) {
   return [
-    createWallButton(worldRoot, "Piramide", -2.05, shapes.pyramid),
-    createWallButton(worldRoot, "Quadrado", 0, shapes.square),
-    createWallButton(worldRoot, "Cilindro", 2.05, shapes.cylinder),
+    createWallButton(worldRoot, "Piramide", -3.1, { shape: shapes.pyramid }),
+    createWallButton(worldRoot, "Quadrado", -1.02, { shape: shapes.square }),
+    createWallButton(worldRoot, "Cilindro", 1.02, { shape: shapes.cylinder }),
+    createWallButton(worldRoot, "Painel", 3.1, { action: "open-panel" }),
   ];
 }
 
-function createWallButton(worldRoot, label, x, shape) {
+function createWallButton(worldRoot, label, x, userData) {
   const button = new THREE.Mesh(
     new THREE.PlaneGeometry(1.7, 0.64),
     new THREE.MeshStandardMaterial({
@@ -185,7 +207,7 @@ function createWallButton(worldRoot, label, x, shape) {
   );
 
   button.position.set(x, 1.25, -4.35);
-  button.userData = { shape };
+  button.userData = userData;
   worldRoot.add(button);
   return button;
 }
