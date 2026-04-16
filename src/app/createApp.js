@@ -5,7 +5,7 @@ import { createHeldPanel } from "./heldPanel.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 
 export function createApp() {
   const { scene, worldRoot, objects, shapes, palette } = createSceneWorld();
@@ -44,7 +44,7 @@ export function createApp() {
   const controlsHint = document.querySelector("#controls-hint");
   if (controlsHint) {
     controlsHint.textContent =
-      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. VR: use o raio da mao para apontar; pinca para clicar. Ative o painel movel pelo botao Painel na parede. Pincando com as duas maos ao mesmo tempo aparece uma linha ligando os dedos (controle do cenario virao depois).";
+      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. VR: use o raio da mao para apontar; pinca para clicar. Ative o painel movel pelo botao Painel na parede. Pincando com as duas maos ao mesmo tempo aparece a linha amarela: aproxime ou afaste as maos para mudar o zoom, mova as duas juntas para transladar o cenario, e gire a linha para rodar.";
   }
 
   const wallButtons = createWallButtons(worldRoot, shapes);
@@ -53,6 +53,7 @@ export function createApp() {
   const xrHands = createXRHandGestures({
     renderer,
     scene,
+    worldRoot,
     interactables: () => [...wallButtons, ...heldPanel.getInteractables()],
     onHoverChange: (hoveredObjects) => {
       setHoveredButton(hoveredObjects[0] ?? null);
