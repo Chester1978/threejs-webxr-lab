@@ -5,7 +5,7 @@ import { createHeldPanel } from "./heldPanel.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 
 export function createApp() {
   const { scene, worldRoot, objects, shapes, palette } = createSceneWorld();
@@ -13,8 +13,8 @@ export function createApp() {
   const camera = new THREE.PerspectiveCamera(
     70,
     window.innerWidth / window.innerHeight,
-    0.1,
-    100,
+    0.05,
+    2000,
   );
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });

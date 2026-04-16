@@ -18,8 +18,10 @@ export function createXRHandGestures({
 
   const pinchThreshold = 0.028;
   const maxRayDistance = 12;
-  const minWorldScale = 0.2;
-  const maxWorldScale = 5;
+  // Intentionally very loose bounds — enough to let the user zoom from
+  // "miniature model between the hands" to "room-scale walk-in".
+  const minWorldScale = 0.02;
+  const maxWorldScale = 50;
 
   const hands = [0, 1].map((index) => {
     const hand = renderer.xr.getHand(index);
@@ -44,7 +46,7 @@ export function createXRHandGestures({
       thumbWorld: new THREE.Vector3(),
       indexWorld: new THREE.Vector3(),
       wristWorld: new THREE.Vector3(),
-      metacarpalWorld: new THREE.Vector3(),
+      middleMetacarpalWorld: new THREE.Vector3(),
       rayOrigin: new THREE.Vector3(),
       rayDirection: new THREE.Vector3(),
       hoveredObject: null,
@@ -71,17 +73,17 @@ export function createXRHandGestures({
   function updateHandJoints(handState) {
     const thumb = handState.hand.joints?.["thumb-tip"];
     const indexTip = handState.hand.joints?.["index-finger-tip"];
-    const metacarpal = handState.hand.joints?.["index-finger-metacarpal"];
+    const middleMetacarpal = handState.hand.joints?.["middle-finger-metacarpal"];
     const wrist = handState.hand.joints?.wrist;
 
     if (
       !thumb ||
       !indexTip ||
-      !metacarpal ||
+      !middleMetacarpal ||
       !wrist ||
       !thumb.visible ||
       !indexTip.visible ||
-      !metacarpal.visible ||
+      !middleMetacarpal.visible ||
       !wrist.visible
     ) {
       handState.isPinching = false;
@@ -93,7 +95,7 @@ export function createXRHandGestures({
     thumb.getWorldPosition(handState.thumbWorld);
     indexTip.getWorldPosition(handState.indexWorld);
     wrist.getWorldPosition(handState.wristWorld);
-    metacarpal.getWorldPosition(handState.metacarpalWorld);
+    middleMetacarpal.getWorldPosition(handState.middleMetacarpalWorld);
 
     handState.pinchWorld
       .copy(handState.thumbWorld)
@@ -104,17 +106,18 @@ export function createXRHandGestures({
       handState.thumbWorld.distanceTo(handState.indexWorld) < pinchThreshold;
     handState.isOpen = getIsOpenHand(handState);
 
-    // Stable ray: origin at the palm center (midpoint of wrist and the
-    // index-finger metacarpal joint), direction along the hand's forward
-    // axis (wrist -> metacarpal). Neither point moves much while the user
-    // pinches, so the aim doesn't drift as the finger curls.
+    // Stable aim along the hand's central axis. Using the middle finger's
+    // metacarpal (the knuckle in the center of the palm) instead of the
+    // index keeps the ray from leaning toward the thumb side. Both the
+    // wrist and the metacarpal are rooted in the palm and don't move when
+    // the index+thumb pinch, so the target doesn't drift.
     handState.rayOrigin
       .copy(handState.wristWorld)
-      .add(handState.metacarpalWorld)
+      .add(handState.middleMetacarpalWorld)
       .multiplyScalar(0.5);
 
     handState.rayDirection
-      .copy(handState.metacarpalWorld)
+      .copy(handState.middleMetacarpalWorld)
       .sub(handState.wristWorld)
       .normalize();
 

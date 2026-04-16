@@ -3,7 +3,6 @@ import * as THREE from "three";
 export function createSceneWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#07111f");
-  scene.fog = new THREE.Fog("#07111f", 8, 30);
 
   const worldRoot = new THREE.Group();
   scene.add(worldRoot);
