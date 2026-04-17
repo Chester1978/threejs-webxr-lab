@@ -5,7 +5,7 @@ import { createSceneWorld, animateObjects } from "./scene.js";
 import { createTouchPanel } from "./touchPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 
 export function createApp() {
   const { scene, worldRoot, objects } = createSceneWorld();
@@ -14,7 +14,7 @@ export function createApp() {
     70,
     window.innerWidth / window.innerHeight,
     0.05,
-    2000,
+    100000,
   );
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -45,7 +45,7 @@ export function createApp() {
   }
 
   const desktopControls = createDesktopControls(camera);
-  const touchPanel = createTouchPanel(scene);
+  const touchPanel = createTouchPanel(worldRoot);
   const xrHands = createXRHandGestures({
     renderer,
     scene,

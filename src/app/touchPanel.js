@@ -1,9 +1,9 @@
 import * as THREE from "three";
 
-export function createTouchPanel(scene) {
+export function createTouchPanel(worldRoot) {
   const panelRoot = new THREE.Group();
-  panelRoot.position.set(0, 1.15, -0.55);
-  scene.add(panelRoot);
+  panelRoot.position.set(0, 0, 2.95);
+  worldRoot.add(panelRoot);
 
   const background = new THREE.Mesh(
     new THREE.PlaneGeometry(0.22, 0.34),
