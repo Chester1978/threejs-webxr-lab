@@ -5,7 +5,7 @@ import { createSceneWorld, animateObjects } from "./scene.js";
 import { createTouchPanel } from "./touchPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 9;
+const APP_VERSION = 10;
 
 export function createApp() {
   const { scene, worldRoot, objects } = createSceneWorld();

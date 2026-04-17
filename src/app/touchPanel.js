@@ -6,7 +6,7 @@ export function createTouchPanel(scene) {
   scene.add(panelRoot);
 
   const background = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.28, 0.34),
+    new THREE.PlaneGeometry(0.22, 0.34),
     new THREE.MeshStandardMaterial({
       color: "#102033",
       emissive: "#08111c",
@@ -19,18 +19,18 @@ export function createTouchPanel(scene) {
   );
   panelRoot.add(background);
 
-  const title = makeLabel("Toque", 0.28, 0.04, "#cfe3ff", "#173256");
+  const title = makeLabel("Toque", 0.22, 0.04, "#cfe3ff", "#173256");
   title.position.set(0, 0.13, 0.005);
   panelRoot.add(title);
 
   const columns = 3;
   const rows = 3;
-  const btnSize = 0.07;
-  const gap = 0.015;
+  const btnSize = 0.05;
+  const gap = 0.012;
   const gridWidth = columns * btnSize + (columns - 1) * gap;
   const gridHeight = rows * btnSize + (rows - 1) * gap;
   const xStart = -gridWidth / 2 + btnSize / 2;
-  const yStart = 0.065;
+  const yStart = 0.06;
 
   const toggleButtons = [];
 
@@ -65,7 +65,7 @@ export function createTouchPanel(scene) {
   }
 
   const resetButton = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.18, 0.04),
+    new THREE.PlaneGeometry(0.14, 0.04),
     new THREE.MeshStandardMaterial({
       map: makeButtonTexture("Reset", "#fff2f2", "#7d1717"),
       color: "#ffffff",
@@ -76,11 +76,11 @@ export function createTouchPanel(scene) {
       transparent: true,
     }),
   );
-  resetButton.position.set(0, -0.13, 0.005);
+  resetButton.position.set(0, -0.14, 0.005);
   resetButton.userData = { kind: "reset" };
   panelRoot.add(resetButton);
 
-  const touchRadius = 0.04;
+  const touchRadius = 0.03;
   const tempVec = new THREE.Vector3();
   // Track "was touching" per hand (indexed by hand.userData.index) per button
   // to debounce — only toggle on the frame the finger first enters the radius.

@@ -12,8 +12,8 @@ export function createXRHandGestures({
   const tempVectorB = new THREE.Vector3();
 
   const pinchThreshold = 0.028;
-  const minWorldScale = 0.02;
-  const maxWorldScale = 50;
+  const minWorldScale = 0.0002;
+  const maxWorldScale = 5000;
 
   const hands = [0, 1].map((index) => {
     const hand = renderer.xr.getHand(index);
