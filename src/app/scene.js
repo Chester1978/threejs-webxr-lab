@@ -89,6 +89,29 @@ export function createSceneWorld() {
   wall.position.set(0, 1.2, -4.4);
   worldRoot.add(wall);
 
+  // Merkabah — two wireframe tetrahedra rotating in opposite directions
+  const merkabahGroup = new THREE.Group();
+  merkabahGroup.position.set(4.5, 0.8, 1.5);
+  worldRoot.add(merkabahGroup);
+
+  const tetraGeo = new THREE.TetrahedronGeometry(0.65);
+  const tetraEdges = new THREE.EdgesGeometry(tetraGeo);
+
+  const tetraUp = new THREE.LineSegments(
+    tetraEdges,
+    new THREE.LineBasicMaterial({ color: "#c4b5fd", transparent: true, opacity: 0.9 }),
+  );
+  merkabahGroup.add(tetraUp);
+
+  const tetraDown = new THREE.LineSegments(
+    tetraEdges.clone(),
+    new THREE.LineBasicMaterial({ color: "#86efac", transparent: true, opacity: 0.9 }),
+  );
+  tetraDown.rotation.x = Math.PI;
+  merkabahGroup.add(tetraDown);
+
+  const merkabah = { group: merkabahGroup, tetraUp, tetraDown };
+
   const palette = [
     "#fca5a5",
     "#fde68a",
@@ -111,12 +134,13 @@ export function createSceneWorld() {
     worldRoot,
     floor,
     objects,
+    merkabah,
     shapes: { pyramid, square, cylinder },
     palette,
   };
 }
 
-export function animateObjects(objects, elapsed) {
+export function animateObjects(objects, elapsed, merkabah) {
   const [pyramid, square, cylinder] = objects;
   pyramid.rotation.y += 0.006;
   square.rotation.y += 0.009;
@@ -125,5 +149,12 @@ export function animateObjects(objects, elapsed) {
   objects.forEach((mesh, index) => {
     mesh.position.y += Math.sin(elapsed * 1.6 + index * 0.8) * 0.0018;
   });
+
+  if (merkabah) {
+    merkabah.tetraUp.rotation.y -= 0.008;
+    merkabah.tetraDown.rotation.y += 0.008;
+    merkabah.group.position.y =
+      0.8 + Math.sin(elapsed * 0.7) * 0.08;
+  }
 }
 

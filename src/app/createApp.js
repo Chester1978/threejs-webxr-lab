@@ -5,10 +5,10 @@ import { createSceneWorld, animateObjects } from "./scene.js";
 import { createTouchPanel } from "./touchPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 11;
+const APP_VERSION = 12;
 
 export function createApp() {
-  const { scene, worldRoot, objects } = createSceneWorld();
+  const { scene, worldRoot, objects, merkabah } = createSceneWorld();
 
   const camera = new THREE.PerspectiveCamera(
     70,
@@ -75,7 +75,7 @@ export function createApp() {
       desktopControls.update(delta);
     }
 
-    animateObjects(objects, clock.elapsedTime);
+    animateObjects(objects, clock.elapsedTime, merkabah);
     renderer.render(scene, camera);
   });
 }
