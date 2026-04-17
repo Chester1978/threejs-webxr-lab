@@ -5,21 +5,13 @@ export function createXRHandGestures({
   renderer,
   scene,
   worldRoot,
-  interactables = [],
-  onHoverChange = () => {},
-  onSelect = () => {},
   onFrame = () => {},
 }) {
   const handModelFactory = new XRHandModelFactory();
   const tempVectorA = new THREE.Vector3();
   const tempVectorB = new THREE.Vector3();
-  const tempVectorC = new THREE.Vector3();
-  const raycaster = new THREE.Raycaster();
 
   const pinchThreshold = 0.028;
-  const maxRayDistance = 12;
-  // Intentionally very loose bounds — enough to let the user zoom from
-  // "miniature model between the hands" to "room-scale walk-in".
   const minWorldScale = 0.02;
   const maxWorldScale = 50;
 
@@ -36,20 +28,14 @@ export function createXRHandGestures({
     hand.add(handModelFactory.createHandModel(hand, "spheres"));
     scene.add(hand);
 
-    const ray = createHandRay();
-    scene.add(ray);
-
     return {
       hand,
-      ray,
       pinchWorld: new THREE.Vector3(),
       thumbWorld: new THREE.Vector3(),
       indexWorld: new THREE.Vector3(),
       wristWorld: new THREE.Vector3(),
       middleMetacarpalWorld: new THREE.Vector3(),
-      rayOrigin: new THREE.Vector3(),
-      rayDirection: new THREE.Vector3(),
-      hoveredObject: null,
+      pinkyMetacarpalWorld: new THREE.Vector3(),
       isPinching: false,
       wasPinching: false,
       isOpen: false,
@@ -74,21 +60,22 @@ export function createXRHandGestures({
     const thumb = handState.hand.joints?.["thumb-tip"];
     const indexTip = handState.hand.joints?.["index-finger-tip"];
     const middleMetacarpal = handState.hand.joints?.["middle-finger-metacarpal"];
+    const pinkyMetacarpal = handState.hand.joints?.["pinky-finger-metacarpal"];
     const wrist = handState.hand.joints?.wrist;
 
     if (
       !thumb ||
       !indexTip ||
       !middleMetacarpal ||
+      !pinkyMetacarpal ||
       !wrist ||
       !thumb.visible ||
       !indexTip.visible ||
       !middleMetacarpal.visible ||
+      !pinkyMetacarpal.visible ||
       !wrist.visible
     ) {
       handState.isPinching = false;
-      handState.ray.visible = false;
-      setHandHover(handState, null);
       return false;
     }
 
@@ -96,6 +83,7 @@ export function createXRHandGestures({
     indexTip.getWorldPosition(handState.indexWorld);
     wrist.getWorldPosition(handState.wristWorld);
     middleMetacarpal.getWorldPosition(handState.middleMetacarpalWorld);
+    pinkyMetacarpal.getWorldPosition(handState.pinkyMetacarpalWorld);
 
     handState.pinchWorld
       .copy(handState.thumbWorld)
@@ -106,74 +94,17 @@ export function createXRHandGestures({
       handState.thumbWorld.distanceTo(handState.indexWorld) < pinchThreshold;
     handState.isOpen = getIsOpenHand(handState);
 
-    // Stable aim along the hand's central axis. Using the middle finger's
-    // metacarpal (the knuckle in the center of the palm) instead of the
-    // index keeps the ray from leaning toward the thumb side. Both the
-    // wrist and the metacarpal are rooted in the palm and don't move when
-    // the index+thumb pinch, so the target doesn't drift.
-    handState.rayOrigin
-      .copy(handState.wristWorld)
-      .add(handState.middleMetacarpalWorld)
-      .multiplyScalar(0.5);
-
-    handState.rayDirection
-      .copy(handState.middleMetacarpalWorld)
-      .sub(handState.wristWorld)
-      .normalize();
-
     return true;
   }
 
-  function setHandHover(handState, object) {
-    if (handState.hoveredObject === object) {
-      return;
-    }
-    handState.hoveredObject = object;
-    onHoverChange(hands.map((entry) => entry.hoveredObject).filter(Boolean));
-  }
-
-  function refreshHandRay(handState) {
-    const hit = getRayHit(handState);
-    const targetPoint = hit
-      ? hit.point
-      : tempVectorC
-          .copy(handState.rayOrigin)
-          .addScaledVector(handState.rayDirection, maxRayDistance);
-
-    const positions = handState.ray.geometry.attributes.position.array;
-    positions[0] = handState.rayOrigin.x;
-    positions[1] = handState.rayOrigin.y;
-    positions[2] = handState.rayOrigin.z;
-    positions[3] = targetPoint.x;
-    positions[4] = targetPoint.y;
-    positions[5] = targetPoint.z;
-    handState.ray.geometry.attributes.position.needsUpdate = true;
-    handState.ray.visible = true;
-
-    setHandHover(handState, hit?.object ?? null);
-  }
-
-  function getRayHit(handState) {
-    const targets =
-      typeof interactables === "function" ? interactables() : interactables;
-    raycaster.set(handState.rayOrigin, handState.rayDirection);
-    raycaster.far = maxRayDistance;
-    return raycaster.intersectObjects(targets)[0] ?? null;
-  }
-
-  function detectSelections(trackedHands) {
-    trackedHands.forEach((handState) => {
-      if (
-        handState.isPinching &&
-        !handState.wasPinching &&
-        handState.hoveredObject
-      ) {
-        onSelect(handState.hoveredObject, handState);
-      }
-    });
-    hands.forEach((handState) => {
-      handState.wasPinching = handState.isPinching;
-    });
+  // Heuristic: when palms face each other, each hand's thumb is closer to
+  // the opposite wrist than its pinky metacarpal.
+  function arePalmsFacing(hand0, hand1) {
+    const thumbLToR = hand0.thumbWorld.distanceTo(hand1.wristWorld);
+    const pinkyLToR = hand0.pinkyMetacarpalWorld.distanceTo(hand1.wristWorld);
+    const thumbRToL = hand1.thumbWorld.distanceTo(hand0.wristWorld);
+    const pinkyRToL = hand1.pinkyMetacarpalWorld.distanceTo(hand0.wristWorld);
+    return thumbLToR < pinkyLToR && thumbRToL < pinkyRToL;
   }
 
   function updateTwoHandLine(hand0, hand1) {
@@ -250,9 +181,7 @@ export function createXRHandGestures({
     });
     onFrame(trackedHands);
 
-    // Sort so index 0 is always the left hand when both are tracked. Keeps
-    // two-hand gesture math stable across frames regardless of iteration
-    // order.
+    // Sort so index 0 is always the left hand when both are tracked.
     const pinchingHands = trackedHands
       .filter((handState) => handState.isPinching)
       .sort((a, b) => {
@@ -264,14 +193,13 @@ export function createXRHandGestures({
         return 0;
       });
 
-    if (pinchingHands.length >= 2) {
+    // Two-hand gesture: both hands must be pinching AND the palms must face
+    // each other (thumbs closer to opposite hand than pinkies).
+    if (
+      pinchingHands.length >= 2 &&
+      arePalmsFacing(pinchingHands[0], pinchingHands[1])
+    ) {
       updateTwoHandLine(pinchingHands[0], pinchingHands[1]);
-      // Suppress rays + hover so button UI doesn't flicker while the user
-      // is manipulating the scene with both hands.
-      hands.forEach((handState) => {
-        handState.ray.visible = false;
-        setHandHover(handState, null);
-      });
       if (!twoHandGesture.active) {
         startTwoHandGesture(pinchingHands[0], pinchingHands[1]);
       }
@@ -286,17 +214,15 @@ export function createXRHandGestures({
       twoHandGesture.active = false;
     }
     twoHandLine.visible = false;
-
-    trackedHands.forEach(refreshHandRay);
-    detectSelections(trackedHands);
+    hands.forEach((handState) => {
+      handState.wasPinching = handState.isPinching;
+    });
   }
 
   function clear() {
     hands.forEach((handState) => {
       handState.wasPinching = false;
       handState.isOpen = false;
-      handState.ray.visible = false;
-      setHandHover(handState, null);
     });
     twoHandLine.visible = false;
     twoHandGesture.active = false;
@@ -339,24 +265,6 @@ function getIsOpenHand(handState) {
   }
 
   return extendedCount === tipNames.length && !handState.isPinching;
-}
-
-function createHandRay() {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3),
-  );
-
-  const material = new THREE.LineBasicMaterial({
-    color: "#8db6ff",
-    transparent: true,
-    opacity: 0.85,
-  });
-
-  const ray = new THREE.Line(geometry, material);
-  ray.visible = false;
-  return ray;
 }
 
 function createTwoHandLine() {
