@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -28,14 +27,6 @@ def static_proxy(path: str):
     return send_from_directory(DIST_DIR, "index.html")
 
 
-def get_local_ip() -> str:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.connect(("8.8.8.8", 80))
-            return sock.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-
 
 def build_if_needed(skip_build: bool) -> None:
     if skip_build and DIST_DIR.exists():
@@ -50,20 +41,17 @@ def build_if_needed(skip_build: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Gera o build e serve o projeto na rede local."
+        description="Gera o build e serve o projeto localmente."
     )
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-build", action="store_true")
     args = parser.parse_args()
 
     build_if_needed(args.no_build)
 
-    local_ip = get_local_ip()
     print()
     print(f"Servidor pronto em http://127.0.0.1:{args.port}")
-    print(f"Rede local:       http://{local_ip}:{args.port}")
-    print("Use o endereco da rede local no outro dispositivo.")
     print()
 
     app.run(host=args.host, port=args.port, debug=False)

@@ -6,7 +6,7 @@ Projeto minimo para experimentar `three.js` com:
 - cena 3D com piramide, quadrado e cilindro
 - navegacao por teclado
 - botao de entrada em VR via `WebXR`
-- servidor Flask para rede local
+- servidor Flask local
 
 ## Como rodar
 
@@ -16,7 +16,7 @@ Este projeto precisa ser servido por HTTP.
 Opcao 1:
 
 ```bash
-npm run dev -- --host 0.0.0.0
+npm run dev
 ```
 
 Ou no Windows:
@@ -37,7 +37,7 @@ Ou no Windows:
 run-flask-serve.bat
 ```
 
-O script Python gera o build e sobe um servidor Flask em `0.0.0.0:8000`.
+O script Python gera o build e sobe um servidor Flask em `localhost:8000`.
 
 ## GitHub Pages
 
@@ -53,14 +53,6 @@ URL esperada:
 
 ```text
 https://SEU-USUARIO.github.io/threejs-webxr-lab/
-```
-
-## Acesso em outro dispositivo
-
-Com o servidor rodando, abra no outro dispositivo o endereco mostrado como rede local, por exemplo:
-
-```text
-http://192.168.0.25:8000
 ```
 
 ## Controles
