@@ -7,6 +7,18 @@ import { createXRHandGestures } from "./xrHands.js";
 
 const APP_VERSION = 12;
 
+// --- Workaround emulador Meta XR ---
+// O polyfill do emulador cria XRSessions "fake" que o constructor nativo
+// XRWebGLBinding rejeita ("parameter 1 is not of type 'XRSession'").
+// Esconder XRWebGLBinding forca o Three.js a usar XRWebGLLayer (fallback),
+// que funciona normalmente com o polyfill.
+// Tambem desativamos offerSession, que pode auto-iniciar a sessao antes do click.
+if (navigator.xr) {
+  navigator.xr.offerSession = undefined;
+}
+const _savedXRWebGLBinding = globalThis.XRWebGLBinding;
+globalThis.XRWebGLBinding = undefined;
+
 export function createApp() {
   const { scene, worldRoot, objects, merkabah } = createSceneWorld();
 
@@ -24,7 +36,7 @@ export function createApp() {
   document.body.appendChild(renderer.domElement);
 
   const vrButton = VRButton.createButton(renderer, {
-    optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking"],
+    optionalFeatures: ["hand-tracking"],
   });
   const vrButtonSlot = document.querySelector("#vr-button-slot");
   vrButton.classList.add("vr-entry");
