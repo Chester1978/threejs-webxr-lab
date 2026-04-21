@@ -103,6 +103,8 @@ export function createPdfPanel(worldRoot, dbg = null) {
       totalPages = pdfDoc.numPages;
       dbg?.log(`PDF ok: ${totalPages} pages`);
       await renderPage(currentPage);
+      // Pre-cache a few pages while still outside XR
+      for (let i = 2; i <= Math.min(6, totalPages); i++) prerenderPage(i);
       startAutoPlay();
     } catch (err) {
       dbg?.log(`PDF ERRO: ${err.message}`);
@@ -110,39 +112,116 @@ export function createPdfPanel(worldRoot, dbg = null) {
     }
   }
 
+  const RENDER_TIMEOUT_MS = 6000;
+  const pageCache = new Map(); // pageNum -> ImageBitmap
+
   async function renderPage(pageNum) {
-    if (!pdfDoc) { dbg?.log("renderPage: no doc"); return; }
-    if (rendering) { dbg?.log("renderPage: busy"); return; }
+    if (!pdfDoc) { dbg?.log("no doc"); return; }
+    if (rendering) { dbg?.log("busy"); return; }
     rendering = true;
     try {
       currentPage = Math.max(1, Math.min(pageNum, totalPages));
-      dbg?.log(`render pg ${currentPage}`);
+      dbg?.log(`pg ${currentPage}`);
 
-      const page = await pdfDoc.getPage(currentPage);
-      const viewport = page.getViewport({ scale: RENDER_SCALE });
-      dbg?.log(`canvas ${viewport.width|0}x${viewport.height|0}`);
+      // Use cached image if available
+      if (pageCache.has(currentPage)) {
+        dbg?.log("from cache");
+        applyImage(pageCache.get(currentPage));
+        updateCounter();
+        // Pre-render next page in background
+        prerenderPage(currentPage + 1);
+        return;
+      }
 
-      pageCanvas.width = viewport.width;
-      pageCanvas.height = viewport.height;
-
-      pageCtx.fillStyle = "#ffffff";
-      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-
-      await page.render({ canvasContext: pageCtx, viewport }).promise;
-      dbg?.log("render done");
-
-      if (pageMat.map) pageMat.map.dispose();
-      const tex = new THREE.CanvasTexture(pageCanvas);
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      pageMat.map = tex;
-      pageMat.needsUpdate = true;
+      await renderPageToTexture(currentPage);
       updateCounter();
+      // Pre-render next page in background
+      prerenderPage(currentPage + 1);
     } catch (err) {
-      dbg?.log(`RENDER ERR: ${err.message}`);
+      dbg?.log(`ERR: ${err.message}`);
     } finally {
       rendering = false;
     }
+  }
+
+  async function renderPageToTexture(pageNum) {
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: RENDER_SCALE });
+    dbg?.log(`${viewport.width|0}x${viewport.height|0}`);
+
+    // Fresh canvas each time (visionOS may break reused canvases)
+    const cv = document.createElement("canvas");
+    cv.width = viewport.width;
+    cv.height = viewport.height;
+    const cx = cv.getContext("2d");
+    cx.fillStyle = "#ffffff";
+    cx.fillRect(0, 0, cv.width, cv.height);
+
+    const renderTask = page.render({ canvasContext: cx, viewport });
+
+    // Timeout: cancel if render hangs (visionOS Safari issue)
+    const timer = setTimeout(() => {
+      dbg?.log("TIMEOUT cancel");
+      renderTask.cancel();
+    }, RENDER_TIMEOUT_MS);
+
+    try {
+      await renderTask.promise;
+      clearTimeout(timer);
+      dbg?.log("done");
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.name === "RenderingCancelledException") {
+        dbg?.log("cancelled (timeout)");
+      }
+      throw err;
+    }
+
+    // Cache as ImageBitmap for fast future use
+    try {
+      const bmp = await createImageBitmap(cv);
+      pageCache.set(pageNum, bmp);
+      applyImage(bmp);
+    } catch (_) {
+      // Fallback: use canvas directly
+      applyCanvas(cv);
+    }
+  }
+
+  function applyImage(bmpOrCanvas) {
+    if (pageMat.map) pageMat.map.dispose();
+    const tex = new THREE.CanvasTexture(bmpOrCanvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    pageMat.map = tex;
+    pageMat.needsUpdate = true;
+  }
+  const applyCanvas = applyImage; // same API
+
+  // Pre-render next page in background (non-blocking)
+  function prerenderPage(pageNum) {
+    if (pageNum < 1 || pageNum > totalPages || pageCache.has(pageNum)) return;
+    (async () => {
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: RENDER_SCALE });
+        const cv = document.createElement("canvas");
+        cv.width = viewport.width;
+        cv.height = viewport.height;
+        const cx = cv.getContext("2d");
+        cx.fillStyle = "#ffffff";
+        cx.fillRect(0, 0, cv.width, cv.height);
+        const renderTask = page.render({ canvasContext: cx, viewport });
+        const timer = setTimeout(() => renderTask.cancel(), RENDER_TIMEOUT_MS);
+        await renderTask.promise;
+        clearTimeout(timer);
+        const bmp = await createImageBitmap(cv);
+        pageCache.set(pageNum, bmp);
+        dbg?.log(`pre-cached pg ${pageNum}`);
+      } catch (_) {
+        // Silent fail for pre-render
+      }
+    })();
   }
 
   function updateCounter() {
