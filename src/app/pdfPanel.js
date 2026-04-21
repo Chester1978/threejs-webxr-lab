@@ -6,7 +6,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const PDF_PATH = "pdf/863946927-Robert-Hand-Essays-on-Astrology-Schiffer-1982.pdf";
 const RENDER_SCALE = 4;
-const RENDER_TIMEOUT_MS = 8000;
+const JPEG_QUALITY = 0.92;
 
 export function createPdfPanel(worldRoot, dbg = null) {
   const panelRoot = new THREE.Group();
@@ -85,11 +85,13 @@ export function createPdfPanel(worldRoot, dbg = null) {
   let pdfDoc = null;
   let currentPage = 1;
   let totalPages = 0;
-  let rendering = false;
   let autoPlay = true;
   const AUTO_INTERVAL_MS = 10000;
   let autoTimer = null;
-  let renderMethod = "unknown"; // will be set after first render
+
+  // Pre-rendered pages as Blob URLs (JPEG)
+  const pageBlobUrls = [];
+  let pagesReady = 0;
 
   async function loadPdf() {
     try {
@@ -98,119 +100,73 @@ export function createPdfPanel(worldRoot, dbg = null) {
       dbg?.log("PDF load...");
       pdfDoc = await pdfjsLib.getDocument(url).promise;
       totalPages = pdfDoc.numPages;
-      dbg?.log(`${totalPages} pages`);
-      await renderPage(currentPage);
-      startAutoPlay();
+      dbg?.log(`${totalPages} pages, pre-rendering`);
+
+      for (let i = 1; i <= totalPages; i++) {
+        try {
+          const blobUrl = await renderPageToBlob(i);
+          pageBlobUrls[i - 1] = blobUrl;
+          pagesReady = i;
+
+          if (i === 1) {
+            await showPage(1);
+            startAutoPlay();
+          }
+          if (i % 10 === 0) dbg?.log(`cached ${i}/${totalPages}`);
+        } catch (err) {
+          dbg?.log(`pg ${i} fail: ${err.message}`);
+          pageBlobUrls[i - 1] = null;
+          pagesReady = i;
+        }
+      }
+      dbg?.log(`all ${totalPages} cached`);
     } catch (err) {
       dbg?.log(`PDF ERRO: ${err.message}`);
     }
   }
 
-  async function renderPage(pageNum) {
-    if (!pdfDoc) { dbg?.log("no doc"); return; }
-    if (rendering) { dbg?.log("busy"); return; }
-    rendering = true;
-    try {
-      currentPage = Math.max(1, Math.min(pageNum, totalPages));
+  async function renderPageToBlob(pageNum) {
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: RENDER_SCALE });
 
-      const page = await pdfDoc.getPage(currentPage);
-      const viewport = page.getViewport({ scale: RENDER_SCALE });
-      const w = viewport.width;
-      const h = viewport.height;
-
-      // Try OffscreenCanvas first, fallback to regular canvas
-      let bmp;
-      if (typeof OffscreenCanvas !== "undefined") {
-        bmp = await renderWithOffscreen(page, viewport, w, h);
-      } else {
-        bmp = await renderWithCanvas(page, viewport, w, h);
-      }
-
-      if (bmp) {
-        applyTexture(bmp);
-        dbg?.log(`pg ${currentPage} [${renderMethod}]`);
-      }
-
-      updateCounter();
-    } catch (err) {
-      dbg?.log(`ERR pg${currentPage}: ${err.message}`);
-    } finally {
-      rendering = false;
-    }
-  }
-
-  async function renderWithOffscreen(page, viewport, w, h) {
-    renderMethod = "offscreen";
-    const osc = new OffscreenCanvas(w, h);
-    const ctx = osc.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, w, h);
-
-    const renderTask = page.render({ canvasContext: ctx, viewport });
-
-    // Race against timeout
-    const result = await raceTimeout(renderTask.promise, () => {
-      dbg?.log("offscreen TIMEOUT");
-      renderTask.cancel();
-    });
-
-    if (!result.ok) {
-      // Fallback to regular canvas
-      dbg?.log("fallback to canvas");
-      return renderWithCanvas(page, viewport, w, h);
-    }
-
-    return await createImageBitmap(osc);
-  }
-
-  async function renderWithCanvas(page, viewport, w, h) {
-    renderMethod = "canvas";
     const cv = document.createElement("canvas");
-    cv.width = w;
-    cv.height = h;
-    const ctx = cv.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, w, h);
+    cv.width = viewport.width;
+    cv.height = viewport.height;
+    const cx = cv.getContext("2d");
+    cx.fillStyle = "#ffffff";
+    cx.fillRect(0, 0, cv.width, cv.height);
 
-    const renderTask = page.render({ canvasContext: ctx, viewport });
+    await page.render({ canvasContext: cx, viewport }).promise;
 
-    const result = await raceTimeout(renderTask.promise, () => {
-      dbg?.log("canvas TIMEOUT");
-      renderTask.cancel();
-    });
+    const blob = await new Promise((resolve) =>
+      cv.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+    );
+    return URL.createObjectURL(blob);
+  }
 
-    if (!result.ok) return null;
+  async function showPage(pageNum) {
+    currentPage = Math.max(1, Math.min(pageNum, totalPages));
+    const blobUrl = pageBlobUrls[currentPage - 1];
 
-    try {
-      return await createImageBitmap(cv);
-    } catch (_) {
-      // createImageBitmap not supported, use canvas directly
-      return cv;
+    if (!blobUrl) {
+      dbg?.log(`pg ${currentPage} not cached`);
+      updateCounter();
+      return;
     }
-  }
 
-  function raceTimeout(promise, onTimeout) {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        onTimeout();
-        resolve({ ok: false });
-      }, RENDER_TIMEOUT_MS);
+    const img = new Image();
+    img.src = blobUrl;
+    await img.decode();
 
-      promise
-        .then(() => { clearTimeout(timer); resolve({ ok: true }); })
-        .catch(() => { clearTimeout(timer); resolve({ ok: false }); });
-    });
-  }
-
-  function applyTexture(source) {
     if (pageMat.map) pageMat.map.dispose();
-    const tex = new THREE.Texture(source);
-    tex.flipY = !(source instanceof ImageBitmap);
+    const tex = new THREE.Texture(img);
+    tex.flipY = true;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.needsUpdate = true;
     pageMat.map = tex;
     pageMat.needsUpdate = true;
+    updateCounter();
   }
 
   function updateCounter() {
@@ -219,12 +175,13 @@ export function createPdfPanel(worldRoot, dbg = null) {
     ctx.fillStyle = "#0e1a2e";
     ctx.fillRect(0, 0, counterCanvas.width, counterCanvas.height);
     ctx.fillStyle = "#cfe3ff";
-    ctx.font = "700 26px Segoe UI";
+    ctx.font = "700 28px Segoe UI";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const status = autoPlay ? "AUTO" : "PAUSA";
+    const cached = pagesReady < totalPages ? ` cache:${pagesReady}` : "";
     ctx.fillText(
-      `${currentPage}/${totalPages} [${status}] ${renderMethod}`,
+      `${currentPage} / ${totalPages}  [${status}]${cached}`,
       counterCanvas.width / 2,
       counterCanvas.height / 2,
     );
@@ -232,12 +189,15 @@ export function createPdfPanel(worldRoot, dbg = null) {
   }
 
   async function nextPage() {
-    if (currentPage < totalPages) await renderPage(currentPage + 1);
-    else if (autoPlay) stopAutoPlay();
+    if (currentPage < Math.min(totalPages, pagesReady)) {
+      await showPage(currentPage + 1);
+    } else if (autoPlay) {
+      stopAutoPlay();
+    }
   }
 
   async function prevPage() {
-    if (currentPage > 1) await renderPage(currentPage - 1);
+    if (currentPage > 1) await showPage(currentPage - 1);
   }
 
   function startAutoPlay() {
@@ -283,7 +243,6 @@ export function createPdfPanel(worldRoot, dbg = null) {
     pauseBtn.material.needsUpdate = true;
   }
 
-  // --- Keyboard handler (desktop) ---
   function onKeyDown(event) {
     if (event.key === "n") {
       event.preventDefault();
@@ -335,8 +294,6 @@ export function createPdfPanel(worldRoot, dbg = null) {
     getButtons: () => navButtons,
   };
 }
-
-// --- helpers ---
 
 function makeNavButton(label, width, height) {
   const canvas = document.createElement("canvas");

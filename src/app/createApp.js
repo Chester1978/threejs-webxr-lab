@@ -7,7 +7,7 @@ import { createPdfPanel } from "./pdfPanel.js";
 import { createDebugPanel } from "./debugPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 20;
+const APP_VERSION = 21;
 
 // --- Workaround emulador Meta XR ---
 // O polyfill do emulador cria XRSessions "fake" que o constructor nativo
