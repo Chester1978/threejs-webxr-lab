@@ -7,8 +7,8 @@ export default defineConfig(({ mode }) => ({
     viteStaticCopy({
       targets: [
         {
-          src: "pdf/*.pdf",
-          dest: "pdf",
+          src: "pdf",
+          dest: ".",
         },
       ],
     }),
