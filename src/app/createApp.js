@@ -4,9 +4,10 @@ import { createDesktopControls } from "./desktopControls.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createTouchPanel } from "./touchPanel.js";
 import { createPdfPanel } from "./pdfPanel.js";
+import { createDebugPanel } from "./debugPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 15;
+const APP_VERSION = 16;
 
 // --- Workaround emulador Meta XR ---
 // O polyfill do emulador cria XRSessions "fake" que o constructor nativo
@@ -59,15 +60,19 @@ export function createApp() {
 
   const desktopControls = createDesktopControls(camera);
   const touchPanel = createTouchPanel(worldRoot);
-  const pdfPanel = createPdfPanel(worldRoot);
+  const debugPanel = createDebugPanel(worldRoot);
+  debugPanel.log("app init v" + APP_VERSION);
+  const pdfPanel = createPdfPanel(worldRoot, debugPanel);
   const xrHands = createXRHandGestures({
     renderer,
     scene,
     worldRoot,
+    dbg: debugPanel,
     onFrame: (trackedHands) => {
       latestTrackedHands = trackedHands;
     },
     onTwoHandStart: () => {
+      debugPanel.log("onTwoHandStart -> nextPage");
       pdfPanel.nextPage();
     },
   });
@@ -83,6 +88,9 @@ export function createApp() {
   window.addEventListener("keydown", pdfPanel.onKeyDown);
   window.addEventListener("keyup", desktopControls.onKeyUp);
 
+  renderer.xr.addEventListener("sessionstart", () => debugPanel.log("XR session START"));
+  renderer.xr.addEventListener("sessionend", () => debugPanel.log("XR session END"));
+
   renderer.setAnimationLoop(() => {
     const delta = Math.min(clock.getDelta(), 0.05);
 
@@ -95,6 +103,7 @@ export function createApp() {
     }
 
     animateObjects(objects, clock.elapsedTime, merkabah);
+    debugPanel.render();
     renderer.render(scene, camera);
   });
 }

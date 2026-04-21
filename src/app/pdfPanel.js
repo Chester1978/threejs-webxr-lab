@@ -7,7 +7,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 const PDF_PATH = "pdf/863946927-Robert-Hand-Essays-on-Astrology-Schiffer-1982.pdf";
 const RENDER_SCALE = 4; // higher = sharper text on the 3D plane
 
-export function createPdfPanel(worldRoot) {
+export function createPdfPanel(worldRoot, dbg = null) {
   const panelRoot = new THREE.Group();
   panelRoot.position.set(-3.5, 0.6, 1.5);
   panelRoot.rotation.y = Math.PI * 0.25;
@@ -98,20 +98,23 @@ export function createPdfPanel(worldRoot) {
     try {
       const base = import.meta.env.BASE_URL ?? "/";
       const url = `${base}${PDF_PATH}`;
-      console.log("[pdfPanel] loading:", url);
+      dbg?.log(`PDF load: ${url}`);
       pdfDoc = await pdfjsLib.getDocument(url).promise;
       totalPages = pdfDoc.numPages;
-      console.log("[pdfPanel] loaded, pages:", totalPages);
+      dbg?.log(`PDF ok: ${totalPages} pages`);
       await renderPage(currentPage);
       startAutoPlay();
     } catch (err) {
+      dbg?.log(`PDF ERRO: ${err.message}`);
       console.error("[pdfPanel] failed to load PDF:", err);
     }
   }
 
   async function renderPage(pageNum) {
-    if (!pdfDoc || rendering) return;
+    if (!pdfDoc) { dbg?.log("renderPage: no doc"); return; }
+    if (rendering) { dbg?.log("renderPage: busy"); return; }
     rendering = true;
+    dbg?.log(`render pg ${pageNum}`);
     currentPage = Math.max(1, Math.min(pageNum, totalPages));
 
     const page = await pdfDoc.getPage(currentPage);
@@ -155,11 +158,13 @@ export function createPdfPanel(worldRoot) {
   }
 
   async function nextPage() {
+    dbg?.log(`nextPage() cur=${currentPage} tot=${totalPages} rend=${rendering}`);
     if (currentPage < totalPages) await renderPage(currentPage + 1);
-    else if (autoPlay) stopAutoPlay(); // stop at last page
+    else if (autoPlay) stopAutoPlay();
   }
 
   async function prevPage() {
+    dbg?.log(`prevPage() cur=${currentPage}`);
     if (currentPage > 1) await renderPage(currentPage - 1);
   }
 

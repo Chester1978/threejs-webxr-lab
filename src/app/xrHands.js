@@ -7,6 +7,7 @@ export function createXRHandGestures({
   worldRoot,
   onFrame = () => {},
   onTwoHandStart = () => {},
+  dbg = null,
 }) {
   const handModelFactory = new XRHandModelFactory();
   const tempVectorA = new THREE.Vector3();
@@ -175,12 +176,25 @@ export function createXRHandGestures({
     worldRoot.position.add(currentMidpoint.sub(tempVectorB));
   }
 
+  let _dbgFrameCount = 0;
+  let _dbgLastHandCount = -1;
+  let _dbgLastPinchCount = -1;
+
   function update() {
     const trackedHands = hands.filter((handState) => {
       handState.wasPinching = handState.isPinching;
       return updateHandJoints(handState);
     });
     onFrame(trackedHands);
+
+    // Periodic debug: log hand/pinch state changes
+    _dbgFrameCount++;
+    if (dbg) {
+      if (trackedHands.length !== _dbgLastHandCount) {
+        _dbgLastHandCount = trackedHands.length;
+        dbg.log(`hands tracked: ${trackedHands.length}`);
+      }
+    }
 
     // Sort so index 0 is always the left hand when both are tracked.
     const pinchingHands = trackedHands
@@ -194,6 +208,11 @@ export function createXRHandGestures({
         return 0;
       });
 
+    if (dbg && pinchingHands.length !== _dbgLastPinchCount) {
+      _dbgLastPinchCount = pinchingHands.length;
+      dbg.log(`pinching: ${pinchingHands.length}`);
+    }
+
     // Two-hand gesture: both hands must be pinching AND the palms must face
     // each other (thumbs closer to opposite hand than pinkies).
     if (
@@ -202,6 +221,7 @@ export function createXRHandGestures({
     ) {
       updateTwoHandLine(pinchingHands[0], pinchingHands[1]);
       if (!twoHandGesture.active) {
+        dbg?.log("2hand START");
         startTwoHandGesture(pinchingHands[0], pinchingHands[1]);
         onTwoHandStart();
       }
