@@ -5,7 +5,7 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const PDF_PATH = "pdf/863946927-Robert-Hand-Essays-on-Astrology-Schiffer-1982.pdf";
-const RENDER_SCALE = 4; // higher = sharper text on the 3D plane
+const RENDER_SCALE = 2; // Safari/visionOS has canvas size limits; 4 may hang
 
 export function createPdfPanel(worldRoot, dbg = null) {
   const panelRoot = new THREE.Group();
@@ -114,29 +114,35 @@ export function createPdfPanel(worldRoot, dbg = null) {
     if (!pdfDoc) { dbg?.log("renderPage: no doc"); return; }
     if (rendering) { dbg?.log("renderPage: busy"); return; }
     rendering = true;
-    dbg?.log(`render pg ${pageNum}`);
-    currentPage = Math.max(1, Math.min(pageNum, totalPages));
+    try {
+      currentPage = Math.max(1, Math.min(pageNum, totalPages));
+      dbg?.log(`render pg ${currentPage}`);
 
-    const page = await pdfDoc.getPage(currentPage);
-    const viewport = page.getViewport({ scale: RENDER_SCALE });
+      const page = await pdfDoc.getPage(currentPage);
+      const viewport = page.getViewport({ scale: RENDER_SCALE });
+      dbg?.log(`canvas ${viewport.width|0}x${viewport.height|0}`);
 
-    pageCanvas.width = viewport.width;
-    pageCanvas.height = viewport.height;
+      pageCanvas.width = viewport.width;
+      pageCanvas.height = viewport.height;
 
-    // White background (some PDFs have transparent backgrounds)
-    pageCtx.fillStyle = "#ffffff";
-    pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      pageCtx.fillStyle = "#ffffff";
+      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
-    await page.render({ canvasContext: pageCtx, viewport }).promise;
+      await page.render({ canvasContext: pageCtx, viewport }).promise;
+      dbg?.log("render done");
 
-    if (pageMat.map) pageMat.map.dispose();
-    const tex = new THREE.CanvasTexture(pageCanvas);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    pageMat.map = tex;
-    pageMat.needsUpdate = true;
-    updateCounter();
-    rendering = false;
+      if (pageMat.map) pageMat.map.dispose();
+      const tex = new THREE.CanvasTexture(pageCanvas);
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      pageMat.map = tex;
+      pageMat.needsUpdate = true;
+      updateCounter();
+    } catch (err) {
+      dbg?.log(`RENDER ERR: ${err.message}`);
+    } finally {
+      rendering = false;
+    }
   }
 
   function updateCounter() {
