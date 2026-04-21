@@ -5,7 +5,7 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const PDF_PATH = "pdf/863946927-Robert-Hand-Essays-on-Astrology-Schiffer-1982.pdf";
-const RENDER_SCALE = 2; // Safari/visionOS has canvas size limits; 4 may hang
+const RENDER_SCALE = 2;
 
 export function createPdfPanel(worldRoot, dbg = null) {
   const panelRoot = new THREE.Group();
@@ -13,13 +13,9 @@ export function createPdfPanel(worldRoot, dbg = null) {
   panelRoot.rotation.y = Math.PI * 0.25;
   worldRoot.add(panelRoot);
 
-  // Page canvas — will be reused for every page render
-  const pageCanvas = document.createElement("canvas");
-  const pageCtx = pageCanvas.getContext("2d");
-
   // 3D plane to display the PDF page
   const planeWidth = 1.6;
-  const planeHeight = 2.1; // roughly A4/letter proportions
+  const planeHeight = 2.1;
   const planeGeo = new THREE.PlaneGeometry(planeWidth, planeHeight);
 
   const pageMat = new THREE.MeshStandardMaterial({
@@ -28,10 +24,9 @@ export function createPdfPanel(worldRoot, dbg = null) {
     metalness: 0.0,
   });
   const pageMesh = new THREE.Mesh(planeGeo, pageMat);
-  pageMesh.position.set(0, 0, 0);
   panelRoot.add(pageMesh);
 
-  // Thin frame behind the page for visual depth
+  // Frame
   const frame = new THREE.Mesh(
     new THREE.PlaneGeometry(planeWidth + 0.06, planeHeight + 0.06),
     new THREE.MeshStandardMaterial({
@@ -65,7 +60,7 @@ export function createPdfPanel(worldRoot, dbg = null) {
   nextBtn.userData = { kind: "pdf-next" };
   panelRoot.add(nextBtn);
 
-  // Page counter label
+  // Page counter
   const counterCanvas = document.createElement("canvas");
   counterCanvas.width = 256;
   counterCanvas.height = 64;
@@ -89,67 +84,55 @@ export function createPdfPanel(worldRoot, dbg = null) {
   let pdfDoc = null;
   let currentPage = 1;
   let totalPages = 0;
-  let rendering = false;
   let autoPlay = true;
   const AUTO_INTERVAL_MS = 10000;
   let autoTimer = null;
+
+  // All pages pre-rendered as Blob URLs (JPEG) — works in XR without canvas 2d
+  const pageBlobUrls = []; // index 0 = page 1
+  let pagesReady = 0;
 
   async function loadPdf() {
     try {
       const base = import.meta.env.BASE_URL ?? "/";
       const url = `${base}${PDF_PATH}`;
-      dbg?.log(`PDF load: ${url}`);
+      dbg?.log(`PDF load...`);
       pdfDoc = await pdfjsLib.getDocument(url).promise;
       totalPages = pdfDoc.numPages;
-      dbg?.log(`PDF ok: ${totalPages} pages`);
-      await renderPage(currentPage);
-      // Pre-cache a few pages while still outside XR
-      for (let i = 2; i <= Math.min(6, totalPages); i++) prerenderPage(i);
-      startAutoPlay();
-    } catch (err) {
-      dbg?.log(`PDF ERRO: ${err.message}`);
-      console.error("[pdfPanel] failed to load PDF:", err);
-    }
-  }
+      dbg?.log(`${totalPages} pages, pre-rendering`);
 
-  const RENDER_TIMEOUT_MS = 6000;
-  const pageCache = new Map(); // pageNum -> ImageBitmap
+      // Pre-render ALL pages sequentially as JPEG blob URLs
+      for (let i = 1; i <= totalPages; i++) {
+        try {
+          const blobUrl = await renderPageToBlob(i);
+          pageBlobUrls[i - 1] = blobUrl;
+          pagesReady = i;
 
-  async function renderPage(pageNum) {
-    if (!pdfDoc) { dbg?.log("no doc"); return; }
-    if (rendering) { dbg?.log("busy"); return; }
-    rendering = true;
-    try {
-      currentPage = Math.max(1, Math.min(pageNum, totalPages));
-      dbg?.log(`pg ${currentPage}`);
+          // Show first page immediately
+          if (i === 1) {
+            await showPage(1);
+            startAutoPlay();
+          }
 
-      // Use cached image if available
-      if (pageCache.has(currentPage)) {
-        dbg?.log("from cache");
-        applyImage(pageCache.get(currentPage));
-        updateCounter();
-        // Pre-render next page in background
-        prerenderPage(currentPage + 1);
-        return;
+          // Progress log every 10 pages
+          if (i % 10 === 0) dbg?.log(`cached ${i}/${totalPages}`);
+        } catch (err) {
+          dbg?.log(`pg ${i} fail: ${err.message}`);
+          pageBlobUrls[i - 1] = null;
+          pagesReady = i;
+        }
       }
 
-      await renderPageToTexture(currentPage);
-      updateCounter();
-      // Pre-render next page in background
-      prerenderPage(currentPage + 1);
+      dbg?.log(`all ${totalPages} cached`);
     } catch (err) {
-      dbg?.log(`ERR: ${err.message}`);
-    } finally {
-      rendering = false;
+      dbg?.log(`PDF ERRO: ${err.message}`);
     }
   }
 
-  async function renderPageToTexture(pageNum) {
+  async function renderPageToBlob(pageNum) {
     const page = await pdfDoc.getPage(pageNum);
     const viewport = page.getViewport({ scale: RENDER_SCALE });
-    dbg?.log(`${viewport.width|0}x${viewport.height|0}`);
 
-    // Fresh canvas each time (visionOS may break reused canvases)
     const cv = document.createElement("canvas");
     cv.width = viewport.width;
     cv.height = viewport.height;
@@ -157,71 +140,40 @@ export function createPdfPanel(worldRoot, dbg = null) {
     cx.fillStyle = "#ffffff";
     cx.fillRect(0, 0, cv.width, cv.height);
 
-    const renderTask = page.render({ canvasContext: cx, viewport });
+    await page.render({ canvasContext: cx, viewport }).promise;
 
-    // Timeout: cancel if render hangs (visionOS Safari issue)
-    const timer = setTimeout(() => {
-      dbg?.log("TIMEOUT cancel");
-      renderTask.cancel();
-    }, RENDER_TIMEOUT_MS);
-
-    try {
-      await renderTask.promise;
-      clearTimeout(timer);
-      dbg?.log("done");
-    } catch (err) {
-      clearTimeout(timer);
-      if (err.name === "RenderingCancelledException") {
-        dbg?.log("cancelled (timeout)");
-      }
-      throw err;
-    }
-
-    // Cache as ImageBitmap for fast future use
-    try {
-      const bmp = await createImageBitmap(cv);
-      pageCache.set(pageNum, bmp);
-      applyImage(bmp);
-    } catch (_) {
-      // Fallback: use canvas directly
-      applyCanvas(cv);
-    }
+    // Convert to JPEG blob URL (~100-200KB per page vs ~8MB raw)
+    const blob = await new Promise((resolve) =>
+      cv.toBlob(resolve, "image/jpeg", 0.85),
+    );
+    return URL.createObjectURL(blob);
   }
 
-  function applyImage(bmpOrCanvas) {
+  // Show a page from the pre-rendered blob cache
+  async function showPage(pageNum) {
+    currentPage = Math.max(1, Math.min(pageNum, totalPages));
+    const blobUrl = pageBlobUrls[currentPage - 1];
+
+    if (!blobUrl) {
+      dbg?.log(`pg ${currentPage} not cached`);
+      updateCounter();
+      return;
+    }
+
+    // Load blob URL as an Image, then apply as texture
+    const img = new Image();
+    img.src = blobUrl;
+    await img.decode();
+
     if (pageMat.map) pageMat.map.dispose();
-    const tex = new THREE.CanvasTexture(bmpOrCanvas);
+    const tex = new THREE.Texture(img);
+    tex.flipY = true;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
     pageMat.map = tex;
     pageMat.needsUpdate = true;
-  }
-  const applyCanvas = applyImage; // same API
-
-  // Pre-render next page in background (non-blocking)
-  function prerenderPage(pageNum) {
-    if (pageNum < 1 || pageNum > totalPages || pageCache.has(pageNum)) return;
-    (async () => {
-      try {
-        const page = await pdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: RENDER_SCALE });
-        const cv = document.createElement("canvas");
-        cv.width = viewport.width;
-        cv.height = viewport.height;
-        const cx = cv.getContext("2d");
-        cx.fillStyle = "#ffffff";
-        cx.fillRect(0, 0, cv.width, cv.height);
-        const renderTask = page.render({ canvasContext: cx, viewport });
-        const timer = setTimeout(() => renderTask.cancel(), RENDER_TIMEOUT_MS);
-        await renderTask.promise;
-        clearTimeout(timer);
-        const bmp = await createImageBitmap(cv);
-        pageCache.set(pageNum, bmp);
-        dbg?.log(`pre-cached pg ${pageNum}`);
-      } catch (_) {
-        // Silent fail for pre-render
-      }
-    })();
+    updateCounter();
   }
 
   function updateCounter() {
@@ -234,8 +186,9 @@ export function createPdfPanel(worldRoot, dbg = null) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const status = autoPlay ? "AUTO" : "PAUSA";
+    const cached = pagesReady < totalPages ? ` cache:${pagesReady}` : "";
     ctx.fillText(
-      `${currentPage} / ${totalPages}  [${status}]`,
+      `${currentPage} / ${totalPages}  [${status}]${cached}`,
       counterCanvas.width / 2,
       counterCanvas.height / 2,
     );
@@ -243,14 +196,15 @@ export function createPdfPanel(worldRoot, dbg = null) {
   }
 
   async function nextPage() {
-    dbg?.log(`nextPage() cur=${currentPage} tot=${totalPages} rend=${rendering}`);
-    if (currentPage < totalPages) await renderPage(currentPage + 1);
-    else if (autoPlay) stopAutoPlay();
+    if (currentPage < Math.min(totalPages, pagesReady)) {
+      await showPage(currentPage + 1);
+    } else if (autoPlay) {
+      stopAutoPlay();
+    }
   }
 
   async function prevPage() {
-    dbg?.log(`prevPage() cur=${currentPage}`);
-    if (currentPage > 1) await renderPage(currentPage - 1);
+    if (currentPage > 1) await showPage(currentPage - 1);
   }
 
   function startAutoPlay() {
@@ -321,7 +275,6 @@ export function createPdfPanel(worldRoot, dbg = null) {
       const handIndex = handState.hand.userData.index;
       const wasPinch = wasPinching.get(handIndex) ?? false;
 
-      // Detect pinch start (transition from not pinching to pinching)
       if (handState.isPinching && !wasPinch) {
         for (const btn of navButtons) {
           btn.getWorldPosition(tempVec);
@@ -339,7 +292,7 @@ export function createPdfPanel(worldRoot, dbg = null) {
     }
   }
 
-  // Start loading
+  // Start loading and pre-rendering
   loadPdf();
 
   return {
