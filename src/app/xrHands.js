@@ -6,6 +6,7 @@ export function createXRHandGestures({
   scene,
   worldRoot,
   onFrame = () => {},
+  onTwoHandStart = () => {},
 }) {
   const handModelFactory = new XRHandModelFactory();
   const tempVectorA = new THREE.Vector3();
@@ -202,6 +203,7 @@ export function createXRHandGestures({
       updateTwoHandLine(pinchingHands[0], pinchingHands[1]);
       if (!twoHandGesture.active) {
         startTwoHandGesture(pinchingHands[0], pinchingHands[1]);
+        onTwoHandStart();
       }
       updateTwoHandGesture(pinchingHands[0], pinchingHands[1]);
       hands.forEach((handState) => {
