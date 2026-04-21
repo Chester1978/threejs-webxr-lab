@@ -220,33 +220,32 @@ export function createPdfPanel(worldRoot) {
     }
   }
 
-  // --- VR touch interaction ---
-  const touchRadius = 0.12;
+  // --- VR pinch interaction ---
+  const pinchRadius = 0.2;
   const tempVec = new THREE.Vector3();
-  const wasTouching = new Map();
+  const wasPinching = new Map();
   const navButtons = [prevBtn, pauseBtn, nextBtn];
 
   function checkTouch(trackedHands) {
     for (const handState of trackedHands) {
       const handIndex = handState.hand.userData.index;
-      if (!wasTouching.has(handIndex)) {
-        wasTouching.set(handIndex, new Array(navButtons.length).fill(false));
-      }
-      const prev = wasTouching.get(handIndex);
+      const wasPinch = wasPinching.get(handIndex) ?? false;
 
-      for (let i = 0; i < navButtons.length; i++) {
-        const btn = navButtons[i];
-        btn.getWorldPosition(tempVec);
-        const dist = handState.indexWorld.distanceTo(tempVec);
-        const isTouching = dist < touchRadius;
-
-        if (isTouching && !prev[i]) {
-          if (btn.userData.kind === "pdf-prev") prevPage();
-          else if (btn.userData.kind === "pdf-next") nextPage();
-          else if (btn.userData.kind === "pdf-pause") toggleAutoPlay();
+      // Detect pinch start (transition from not pinching to pinching)
+      if (handState.isPinching && !wasPinch) {
+        for (const btn of navButtons) {
+          btn.getWorldPosition(tempVec);
+          const dist = handState.pinchWorld.distanceTo(tempVec);
+          if (dist < pinchRadius) {
+            if (btn.userData.kind === "pdf-prev") prevPage();
+            else if (btn.userData.kind === "pdf-next") nextPage();
+            else if (btn.userData.kind === "pdf-pause") toggleAutoPlay();
+            break;
+          }
         }
-        prev[i] = isTouching;
       }
+
+      wasPinching.set(handIndex, handState.isPinching);
     }
   }
 
