@@ -47,16 +47,21 @@ export function createPdfPanel(worldRoot) {
 
   // --- Navigation buttons ---
   const btnWidth = 0.35;
-  const btnHeight = 0.1;
-  const btnY = -(planeHeight / 2) - 0.1;
+  const btnHeight = 0.12;
+  const btnY = -(planeHeight / 2) - 0.12;
 
   const prevBtn = makeNavButton("<  Anterior", btnWidth, btnHeight);
-  prevBtn.position.set(-0.3, btnY, 0);
+  prevBtn.position.set(-0.45, btnY, 0.01);
   prevBtn.userData = { kind: "pdf-prev" };
   panelRoot.add(prevBtn);
 
+  const pauseBtn = makeNavButton("|| Pausa", btnWidth, btnHeight);
+  pauseBtn.position.set(0, btnY, 0.01);
+  pauseBtn.userData = { kind: "pdf-pause" };
+  panelRoot.add(pauseBtn);
+
   const nextBtn = makeNavButton("Proximo  >", btnWidth, btnHeight);
-  nextBtn.position.set(0.3, btnY, 0);
+  nextBtn.position.set(0.45, btnY, 0.01);
   nextBtn.userData = { kind: "pdf-next" };
   panelRoot.add(nextBtn);
 
@@ -77,7 +82,7 @@ export function createPdfPanel(worldRoot) {
       metalness: 0.0,
     }),
   );
-  counterMesh.position.set(0, btnY, 0);
+  counterMesh.position.set(0, btnY - 0.1, 0.01);
   panelRoot.add(counterMesh);
 
   // --- PDF state ---
@@ -85,6 +90,9 @@ export function createPdfPanel(worldRoot) {
   let currentPage = 1;
   let totalPages = 0;
   let rendering = false;
+  let autoPlay = true;
+  const AUTO_INTERVAL_MS = 10000;
+  let autoTimer = null;
 
   async function loadPdf() {
     try {
@@ -95,6 +103,7 @@ export function createPdfPanel(worldRoot) {
       totalPages = pdfDoc.numPages;
       console.log("[pdfPanel] loaded, pages:", totalPages);
       await renderPage(currentPage);
+      startAutoPlay();
     } catch (err) {
       console.error("[pdfPanel] failed to load PDF:", err);
     }
@@ -136,8 +145,9 @@ export function createPdfPanel(worldRoot) {
     ctx.font = "700 28px Segoe UI";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    const status = autoPlay ? "AUTO" : "PAUSA";
     ctx.fillText(
-      `${currentPage} / ${totalPages}`,
+      `${currentPage} / ${totalPages}  [${status}]`,
       counterCanvas.width / 2,
       counterCanvas.height / 2,
     );
@@ -146,10 +156,54 @@ export function createPdfPanel(worldRoot) {
 
   async function nextPage() {
     if (currentPage < totalPages) await renderPage(currentPage + 1);
+    else if (autoPlay) stopAutoPlay(); // stop at last page
   }
 
   async function prevPage() {
     if (currentPage > 1) await renderPage(currentPage - 1);
+  }
+
+  function startAutoPlay() {
+    stopAutoPlay();
+    autoPlay = true;
+    autoTimer = setInterval(() => nextPage(), AUTO_INTERVAL_MS);
+    updatePauseButton();
+    updateCounter();
+  }
+
+  function stopAutoPlay() {
+    autoPlay = false;
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    updatePauseButton();
+    updateCounter();
+  }
+
+  function toggleAutoPlay() {
+    if (autoPlay) stopAutoPlay();
+    else startAutoPlay();
+  }
+
+  function updatePauseButton() {
+    const label = autoPlay ? "|| Pausa" : ">  Play";
+    const fillColor = autoPlay ? "#173256" : "#12693c";
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.strokeStyle = "rgba(190, 220, 255, 0.7)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(4, 4, 248, 56);
+    ctx.fillStyle = "#cfe3ff";
+    ctx.font = "700 30px Segoe UI";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, 128, 32);
+    if (pauseBtn.material.map) pauseBtn.material.map.dispose();
+    pauseBtn.material.map = new THREE.CanvasTexture(canvas);
+    pauseBtn.material.emissive.set(fillColor);
+    pauseBtn.material.needsUpdate = true;
   }
 
   // --- Keyboard handler (desktop) ---
@@ -160,14 +214,17 @@ export function createPdfPanel(worldRoot) {
     } else if (event.key === "m") {
       event.preventDefault();
       nextPage();
+    } else if (event.key === "p") {
+      event.preventDefault();
+      toggleAutoPlay();
     }
   }
 
   // --- VR touch interaction ---
-  const touchRadius = 0.04;
+  const touchRadius = 0.12;
   const tempVec = new THREE.Vector3();
   const wasTouching = new Map();
-  const navButtons = [prevBtn, nextBtn];
+  const navButtons = [prevBtn, pauseBtn, nextBtn];
 
   function checkTouch(trackedHands) {
     for (const handState of trackedHands) {
@@ -186,6 +243,7 @@ export function createPdfPanel(worldRoot) {
         if (isTouching && !prev[i]) {
           if (btn.userData.kind === "pdf-prev") prevPage();
           else if (btn.userData.kind === "pdf-next") nextPage();
+          else if (btn.userData.kind === "pdf-pause") toggleAutoPlay();
         }
         prev[i] = isTouching;
       }
