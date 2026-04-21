@@ -5,7 +5,7 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const PDF_PATH = "pdf/863946927-Robert-Hand-Essays-on-Astrology-Schiffer-1982.pdf";
-const RENDER_SCALE = 2;
+const RENDER_SCALE = 4;
 
 export function createPdfPanel(worldRoot, dbg = null) {
   const panelRoot = new THREE.Group();
@@ -144,7 +144,7 @@ export function createPdfPanel(worldRoot, dbg = null) {
 
     // Convert to JPEG blob URL (~100-200KB per page vs ~8MB raw)
     const blob = await new Promise((resolve) =>
-      cv.toBlob(resolve, "image/jpeg", 0.85),
+      cv.toBlob(resolve, "image/jpeg", 0.92),
     );
     return URL.createObjectURL(blob);
   }
