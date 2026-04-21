@@ -1,13 +1,11 @@
 import * as THREE from "three";
 import * as pdfjsLib from "pdfjs-dist";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).href;
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const PDF_PATH = "pdf/863946927-Robert-Hand-Essays-on-Astrology-Schiffer-1982.pdf";
-const RENDER_SCALE = 2; // higher = sharper text on the 3D plane
+const RENDER_SCALE = 4; // higher = sharper text on the 3D plane
 
 export function createPdfPanel(worldRoot) {
   const panelRoot = new THREE.Group();
@@ -23,12 +21,8 @@ export function createPdfPanel(worldRoot) {
   const planeWidth = 1.6;
   const planeHeight = 2.1; // roughly A4/letter proportions
   const planeGeo = new THREE.PlaneGeometry(planeWidth, planeHeight);
-  const pageTex = new THREE.CanvasTexture(pageCanvas);
-  pageTex.minFilter = THREE.LinearFilter;
-  pageTex.magFilter = THREE.LinearFilter;
 
   const pageMat = new THREE.MeshStandardMaterial({
-    map: pageTex,
     color: "#ffffff",
     roughness: 0.65,
     metalness: 0.0,
@@ -93,11 +87,17 @@ export function createPdfPanel(worldRoot) {
   let rendering = false;
 
   async function loadPdf() {
-    const base = import.meta.env.BASE_URL ?? "/";
-    const url = `${base}${PDF_PATH}`;
-    pdfDoc = await pdfjsLib.getDocument(url).promise;
-    totalPages = pdfDoc.numPages;
-    await renderPage(currentPage);
+    try {
+      const base = import.meta.env.BASE_URL ?? "/";
+      const url = `${base}${PDF_PATH}`;
+      console.log("[pdfPanel] loading:", url);
+      pdfDoc = await pdfjsLib.getDocument(url).promise;
+      totalPages = pdfDoc.numPages;
+      console.log("[pdfPanel] loaded, pages:", totalPages);
+      await renderPage(currentPage);
+    } catch (err) {
+      console.error("[pdfPanel] failed to load PDF:", err);
+    }
   }
 
   async function renderPage(pageNum) {
@@ -117,7 +117,12 @@ export function createPdfPanel(worldRoot) {
 
     await page.render({ canvasContext: pageCtx, viewport }).promise;
 
-    pageTex.needsUpdate = true;
+    if (pageMat.map) pageMat.map.dispose();
+    const tex = new THREE.CanvasTexture(pageCanvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    pageMat.map = tex;
+    pageMat.needsUpdate = true;
     updateCounter();
     rendering = false;
   }
@@ -149,10 +154,10 @@ export function createPdfPanel(worldRoot) {
 
   // --- Keyboard handler (desktop) ---
   function onKeyDown(event) {
-    if (event.key === "," || event.key === "<") {
+    if (event.key === "n") {
       event.preventDefault();
       prevPage();
-    } else if (event.key === "." || event.key === ">") {
+    } else if (event.key === "m") {
       event.preventDefault();
       nextPage();
     }

@@ -54,7 +54,7 @@ export function createApp() {
   const controlsHint = document.querySelector("#controls-hint");
   if (controlsHint) {
     controlsHint.textContent =
-      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. < e > para mudar pagina do PDF. VR: encoste a ponta do indicador nos botoes do painel flutuante para ativar/desativar. Coloque as palmas de frente uma para a outra e pince para ativar a linha amarela de controle do cenario (zoom, rotacao, translacao).";
+      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. M para avancar e N para retroceder pagina do PDF. VR: encoste a ponta do indicador nos botoes do painel flutuante para ativar/desativar. Coloque as palmas de frente uma para a outra e pince para ativar a linha amarela de controle do cenario (zoom, rotacao, translacao).";
   }
 
   const desktopControls = createDesktopControls(camera);
