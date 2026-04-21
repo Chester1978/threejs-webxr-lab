@@ -3,9 +3,10 @@ import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createDesktopControls } from "./desktopControls.js";
 import { createSceneWorld, animateObjects } from "./scene.js";
 import { createTouchPanel } from "./touchPanel.js";
+import { createPdfPanel } from "./pdfPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
 
-const APP_VERSION = 12;
+const APP_VERSION = 13;
 
 // --- Workaround emulador Meta XR ---
 // O polyfill do emulador cria XRSessions "fake" que o constructor nativo
@@ -53,11 +54,12 @@ export function createApp() {
   const controlsHint = document.querySelector("#controls-hint");
   if (controlsHint) {
     controlsHint.textContent =
-      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. VR: encoste a ponta do indicador nos botoes do painel flutuante para ativar/desativar. Coloque as palmas de frente uma para a outra e pince para ativar a linha amarela de controle do cenario (zoom, rotacao, translacao).";
+      "Desktop: setas/WASD para mover, Shift + setas para olhar, Q/E ou PageUp/PageDown para subir e descer. < e > para mudar pagina do PDF. VR: encoste a ponta do indicador nos botoes do painel flutuante para ativar/desativar. Coloque as palmas de frente uma para a outra e pince para ativar a linha amarela de controle do cenario (zoom, rotacao, translacao).";
   }
 
   const desktopControls = createDesktopControls(camera);
   const touchPanel = createTouchPanel(worldRoot);
+  const pdfPanel = createPdfPanel(worldRoot);
   const xrHands = createXRHandGestures({
     renderer,
     scene,
@@ -75,6 +77,7 @@ export function createApp() {
 
   window.addEventListener("resize", onWindowResize);
   window.addEventListener("keydown", desktopControls.onKeyDown);
+  window.addEventListener("keydown", pdfPanel.onKeyDown);
   window.addEventListener("keyup", desktopControls.onKeyUp);
 
   renderer.setAnimationLoop(() => {
@@ -83,6 +86,7 @@ export function createApp() {
     if (renderer.xr.isPresenting) {
       xrHands.update();
       touchPanel.checkTouch(latestTrackedHands);
+      pdfPanel.checkTouch(latestTrackedHands);
     } else {
       desktopControls.update(delta);
     }
