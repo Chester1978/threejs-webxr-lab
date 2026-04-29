@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Video Study</title>
+    <link rel="stylesheet" href="/src/study/style.css" />
+  </head>
+  <body>
+    <!-- Setup screen: folder selection -->
+    <div id="setup-screen" class="screen">
+      <div class="setup-content">
+        <h1>Video Study</h1>
+        <p>Escolha uma pasta para salvar notas de audio e logs de sessao.</p>
+        <button id="btn-select-folder" class="btn-large">Escolher Pasta</button>
+        <p id="folder-status" class="status-text"></p>
+      </div>
+    </div>
+
+    <!-- Main app screen -->
+    <div id="app-screen" class="screen hidden">
+      <div class="app-layout">
+        <!-- Video area -->
+        <div class="video-area">
+          <div id="player-container">
+            <div id="yt-player"></div>
+          </div>
+          <div class="video-info">
+            <select id="video-select" class="video-select"></select>
+          </div>
+        </div>
+
+        <!-- Controls area -->
+        <div class="controls-area">
+          <!-- Session slider -->
+          <div id="session-control" class="slider-section">
+            <div id="session-slider" class="swipe-slider" data-action="session">
+              <div class="slider-track">
+                <div class="slider-thumb">
+                  <span class="thumb-icon">&#9654;</span>
+                </div>
+                <span class="slider-label">Deslize para iniciar sessao</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Transport controls -->
+          <div id="transport" class="transport-section hidden">
+            <!-- Lock slider -->
+            <div class="lock-section">
+              <div id="lock-slider" class="swipe-slider mini" data-action="lock">
+                <div class="slider-track">
+                  <div class="slider-thumb">
+                    <span class="thumb-icon">&#128274;</span>
+                  </div>
+                  <span class="slider-label">Desbloquear</span>
+                </div>
+              </div>
+              <span id="lock-status" class="lock-indicator locked">TRAVADO</span>
+            </div>
+
+            <!-- Play/Pause + interval -->
+            <div class="playback-row">
+              <button id="btn-rewind" class="btn-transport" disabled>&#9194;</button>
+              <button id="btn-play" class="btn-transport btn-play">&#9654;</button>
+              <button id="btn-forward" class="btn-transport" disabled>&#9193;</button>
+            </div>
+
+            <div class="interval-row">
+              <label for="interval-select">Intervalo:</label>
+              <select id="interval-select" class="interval-select">
+                <option value="10">10s</option>
+                <option value="30" selected>30s</option>
+                <option value="60">1 min</option>
+                <option value="300">5 min</option>
+                <option value="600">10 min</option>
+              </select>
+            </div>
+
+            <!-- Progress display -->
+            <div class="progress-row">
+              <span id="current-time">00:00</span>
+              <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+              </div>
+              <span id="duration">00:00</span>
+            </div>
+
+            <!-- Record button -->
+            <div class="record-row">
+              <button id="btn-record" class="btn-record" disabled>&#127908; Gravar Nota</button>
+            </div>
+
+            <!-- End session slider -->
+            <div class="end-session-section">
+              <div id="end-session-slider" class="swipe-slider end-session" data-action="end-session">
+                <div class="slider-track">
+                  <div class="slider-thumb">
+                    <span class="thumb-icon">&#9632;</span>
+                  </div>
+                  <span class="slider-label">Deslize para encerrar</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script async src="https://www.youtube.com/iframe_api"></script>
+    <script type="module" src="/src/study/app.js"></script>
+  </body>
+</html>
