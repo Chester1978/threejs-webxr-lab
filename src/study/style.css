@@ -104,10 +104,7 @@ html, body {
 /* Portrait: video top, controls bottom */
 @media (orientation: portrait) {
     .app-layout {
-        grid-template-rows: auto 1fr;
-    }
-    .video-area {
-        max-height: 35dvh;
+        grid-template-rows: 30dvh 1fr;
     }
 }
 
@@ -136,6 +133,7 @@ html, body {
     flex: 1;
     position: relative;
     min-height: 0;
+    aspect-ratio: 16 / 9;
 }
 
 #player-container iframe {
@@ -144,6 +142,12 @@ html, body {
     left: 0;
     width: 100%;
     height: 100%;
+}
+
+@media (orientation: landscape) {
+    #player-container {
+        aspect-ratio: auto;
+    }
 }
 
 .video-info {

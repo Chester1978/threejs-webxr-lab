@@ -10,6 +10,13 @@ let audioChunks = [];
 let audioStream = null;
 let _isRecording = false;
 
+/** @type {AudioContext|null} */
+let audioContext = null;
+/** @type {MediaStreamAudioDestinationNode|null} */
+let destination = null;
+/** @type {GainNode|null} */
+let gainNode = null;
+
 /** @type {string} */
 let mimeType = 'audio/webm;codecs=opus';
 
@@ -38,12 +45,33 @@ function isSupported() {
 }
 
 /**
- * Requests microphone permission.
+ * Requests microphone permission with optimized audio constraints.
+ * Uses autoGainControl + noiseSuppression and a GainNode for volume boost.
  * @returns {Promise<boolean>}
  */
 async function requestPermission() {
     try {
-        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const rawStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                autoGainControl: true,
+                noiseSuppression: true,
+                echoCancellation: false,
+            }
+        });
+
+        // Boost volume via Web Audio API GainNode
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(rawStream);
+        gainNode = audioContext.createGain();
+        gainNode.gain.value = 2.0; // 2x volume boost
+        destination = audioContext.createMediaStreamDestination();
+        source.connect(gainNode);
+        gainNode.connect(destination);
+
+        // Use the boosted stream for recording
+        audioStream = destination.stream;
+        // Keep reference to raw stream to stop tracks later
+        audioStream._rawStream = rawStream;
         return true;
     } catch (e) {
         console.warn('Microphone permission denied:', e.message);
