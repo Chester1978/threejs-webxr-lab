@@ -105,6 +105,7 @@ function setLocked(isLocked) {
     const btn_rec = document.getElementById('btn-record');
     const lockStatus = document.getElementById('lock-status');
     const lockSlider = document.getElementById('lock-slider');
+    const overlay = document.getElementById('player-overlay');
 
     if (btn_rw) btn_rw.disabled = isLocked;
     if (btn_fw) btn_fw.disabled = isLocked;
@@ -121,6 +122,10 @@ function setLocked(isLocked) {
         if (label) label.textContent = isLocked ? 'Desbloquear' : '';
         if (icon) icon.textContent = isLocked ? '\u{1F512}' : '\u{1F513}';
         lockSlider.classList.toggle('slider-unlocked', !isLocked);
+    }
+
+    if (overlay) {
+        overlay.classList.toggle('unlocked', !isLocked);
     }
 
     if (onLockChange) onLockChange(isLocked);
