@@ -7,6 +7,7 @@ import player from './player.js';
 // --- State ---
 let locked = true;
 let autoLockTimer = null;
+let _isRecordingFn = null; // set by app.js to check recording state
 const AUTO_LOCK_DELAY = 15000; // 15s of inactivity
 
 // --- Callbacks (set by app.js) ---
@@ -107,9 +108,13 @@ function setLocked(isLocked) {
     const lockSlider = document.getElementById('lock-slider');
     const overlay = document.getElementById('player-overlay');
 
+    const btn_play = document.getElementById('btn-play');
+    if (btn_play) btn_play.disabled = isLocked;
     if (btn_rw) btn_rw.disabled = isLocked;
     if (btn_fw) btn_fw.disabled = isLocked;
-    if (btn_rec) btn_rec.disabled = isLocked;
+    // Record button stays enabled while recording (so user can stop it)
+    const recording = _isRecordingFn ? _isRecordingFn() : false;
+    if (btn_rec) btn_rec.disabled = isLocked && !recording;
 
     if (lockStatus) {
         lockStatus.textContent = isLocked ? 'TRAVADO' : 'LIVRE';
@@ -171,6 +176,7 @@ function setupTransportButtons() {
 
     if (btnPlay) {
         btnPlay.addEventListener('click', () => {
+            if (locked) return;
             player.togglePlay();
             resetAutoLock();
         });
@@ -208,9 +214,9 @@ function registerMediaSession() {
     ms.setActionHandler('nexttrack', () => { /* blocked */ });
     ms.setActionHandler('previoustrack', () => { /* blocked */ });
 
-    // Play/Pause always work (not locked)
-    ms.setActionHandler('play', () => { player.play(); });
-    ms.setActionHandler('pause', () => { player.pause(); });
+    // Play/Pause also require unlock
+    ms.setActionHandler('play', () => { if (!locked) player.play(); });
+    ms.setActionHandler('pause', () => { if (!locked) player.pause(); });
 
     // Seek uses our interval, but only if unlocked
     ms.setActionHandler('seekforward', () => {
@@ -287,12 +293,13 @@ function updatePlayButton(isPlaying) {
 // ------------------------------------------------------------------
 
 /**
- * @param {{ onSessionStart: function, onSessionEnd: function, onLockChange?: function }} callbacks
+ * @param {{ onSessionStart: function, onSessionEnd: function, onLockChange?: function, isRecording?: function }} callbacks
  */
 function init(callbacks) {
     onSessionStart = callbacks.onSessionStart;
     onSessionEnd = callbacks.onSessionEnd;
     onLockChange = callbacks.onLockChange || null;
+    _isRecordingFn = callbacks.isRecording || null;
 
     // Session start slider
     const sessionSlider = document.getElementById('session-slider');

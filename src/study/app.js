@@ -164,10 +164,8 @@ function setupRecordButton() {
     }
 
     btn.addEventListener('click', async () => {
-        if (controls.isLocked()) return;
-
         if (recorder.isRecording()) {
-            // Stop recording
+            // Stop recording — always allowed, even when locked
             btn.disabled = true;
             btn.textContent = 'Salvando...';
             try {
@@ -278,6 +276,7 @@ async function startApp() {
     controls.init({
         onSessionStart,
         onSessionEnd,
+        isRecording: () => recorder.isRecording(),
     });
 
     // Setup record button
