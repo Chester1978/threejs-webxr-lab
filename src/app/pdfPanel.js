@@ -89,9 +89,19 @@ export function createPdfPanel(worldRoot, dbg = null) {
   const AUTO_INTERVAL_MS = 10000;
   let autoTimer = null;
 
-  // Pre-rendered pages as Blob URLs (JPEG)
-  const pageBlobUrls = [];
-  let pagesReady = 0;
+  // LRU cache: keeps only a few rendered pages in memory
+  const CACHE_SIZE = 5;
+  /** @type {Map<number, string>} pageNum → blobUrl */
+  const pageCache = new Map();
+
+  function evictCache() {
+    while (pageCache.size > CACHE_SIZE) {
+      const oldest = pageCache.keys().next().value;
+      const url = pageCache.get(oldest);
+      if (url) URL.revokeObjectURL(url);
+      pageCache.delete(oldest);
+    }
+  }
 
   async function loadPdf() {
     try {
@@ -100,32 +110,25 @@ export function createPdfPanel(worldRoot, dbg = null) {
       dbg?.log("PDF load...");
       pdfDoc = await pdfjsLib.getDocument(url).promise;
       totalPages = pdfDoc.numPages;
-      dbg?.log(`${totalPages} pages, pre-rendering`);
+      dbg?.log(`${totalPages} pages (lazy)`);
 
-      for (let i = 1; i <= totalPages; i++) {
-        try {
-          const blobUrl = await renderPageToBlob(i);
-          pageBlobUrls[i - 1] = blobUrl;
-          pagesReady = i;
-
-          if (i === 1) {
-            await showPage(1);
-            startAutoPlay();
-          }
-          if (i % 10 === 0) dbg?.log(`cached ${i}/${totalPages}`);
-        } catch (err) {
-          dbg?.log(`pg ${i} fail: ${err.message}`);
-          pageBlobUrls[i - 1] = null;
-          pagesReady = i;
-        }
-      }
-      dbg?.log(`all ${totalPages} cached`);
+      await showPage(1);
+      startAutoPlay();
     } catch (err) {
       dbg?.log(`PDF ERRO: ${err.message}`);
     }
   }
 
   async function renderPageToBlob(pageNum) {
+    // Return cached blob URL if available
+    if (pageCache.has(pageNum)) {
+      // Move to end (most recently used)
+      const url = pageCache.get(pageNum);
+      pageCache.delete(pageNum);
+      pageCache.set(pageNum, url);
+      return url;
+    }
+
     const page = await pdfDoc.getPage(pageNum);
     const viewport = page.getViewport({ scale: RENDER_SCALE });
 
@@ -141,32 +144,35 @@ export function createPdfPanel(worldRoot, dbg = null) {
     const blob = await new Promise((resolve) =>
       cv.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
     );
-    return URL.createObjectURL(blob);
+    const blobUrl = URL.createObjectURL(blob);
+
+    pageCache.set(pageNum, blobUrl);
+    evictCache();
+    return blobUrl;
   }
 
   async function showPage(pageNum) {
     currentPage = Math.max(1, Math.min(pageNum, totalPages));
-    const blobUrl = pageBlobUrls[currentPage - 1];
-
-    if (!blobUrl) {
-      dbg?.log(`pg ${currentPage} not cached`);
-      updateCounter();
-      return;
-    }
-
-    const img = new Image();
-    img.src = blobUrl;
-    await img.decode();
-
-    if (pageMat.map) pageMat.map.dispose();
-    const tex = new THREE.Texture(img);
-    tex.flipY = true;
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
-    pageMat.map = tex;
-    pageMat.needsUpdate = true;
     updateCounter();
+
+    try {
+      const blobUrl = await renderPageToBlob(currentPage);
+
+      const img = new Image();
+      img.src = blobUrl;
+      await img.decode();
+
+      if (pageMat.map) pageMat.map.dispose();
+      const tex = new THREE.Texture(img);
+      tex.flipY = true;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.needsUpdate = true;
+      pageMat.map = tex;
+      pageMat.needsUpdate = true;
+    } catch (err) {
+      dbg?.log(`pg ${currentPage} fail: ${err.message}`);
+    }
   }
 
   function updateCounter() {
@@ -179,9 +185,8 @@ export function createPdfPanel(worldRoot, dbg = null) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const status = autoPlay ? "AUTO" : "PAUSA";
-    const cached = pagesReady < totalPages ? ` cache:${pagesReady}` : "";
     ctx.fillText(
-      `${currentPage} / ${totalPages}  [${status}]${cached}`,
+      `${currentPage} / ${totalPages}  [${status}]`,
       counterCanvas.width / 2,
       counterCanvas.height / 2,
     );
@@ -189,7 +194,7 @@ export function createPdfPanel(worldRoot, dbg = null) {
   }
 
   async function nextPage() {
-    if (currentPage < Math.min(totalPages, pagesReady)) {
+    if (currentPage < totalPages) {
       await showPage(currentPage + 1);
     } else if (autoPlay) {
       stopAutoPlay();
