@@ -262,11 +262,44 @@ async function main() {
 async function startApp() {
     showApp();
 
+    // Check for last position before initializing player
+    let resumeInfo = null;
+    if (dirHandle) {
+        try {
+            resumeInfo = await session.getLastPosition(dirHandle);
+        } catch (e) {
+            // No previous session
+        }
+    }
+
+    // Use resume video or default to first in playlist
+    const initVideoId = resumeInfo?.videoId || currentVideo?.id || '';
+
+    // If resuming, update currentVideo and select dropdown
+    if (resumeInfo) {
+        currentVideo = { id: resumeInfo.videoId, title: resumeInfo.videoTitle || '' };
+        const sel = document.getElementById('video-select');
+        if (sel) {
+            for (const opt of sel.options) {
+                if (opt.value === resumeInfo.videoId) {
+                    opt.selected = true;
+                    if (opt.textContent) currentVideo.title = opt.textContent;
+                    break;
+                }
+            }
+        }
+    }
+
     // Init YouTube player (with timeout fallback — won't block controls)
     try {
-        const videoId = currentVideo?.id || '';
-        await player.initPlayer('yt-player', videoId, {
+        await player.initPlayer('yt-player', initVideoId, {
             onStateChange: onPlayerStateChange,
+            onReady: () => {
+                // Seek to last position after player is ready
+                if (resumeInfo && resumeInfo.videoPosition > 0) {
+                    player.seekTo(resumeInfo.videoPosition);
+                }
+            },
         });
     } catch (e) {
         console.warn('YouTube player init failed:', e);
@@ -281,6 +314,13 @@ async function startApp() {
 
     // Setup record button
     setupRecordButton();
+
+    // Show resume info to user
+    if (resumeInfo) {
+        const pos = controls.formatTime(resumeInfo.videoPosition);
+        const statusEl = document.getElementById('folder-status');
+        if (statusEl) statusEl.textContent = `Retomando: ${resumeInfo.videoTitle || resumeInfo.videoId} em ${pos}`;
+    }
 }
 
 // ------------------------------------------------------------------

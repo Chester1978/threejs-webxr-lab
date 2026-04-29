@@ -116,6 +116,15 @@ function seekRelative(seconds) {
     ytPlayer.seekTo(target, true);
 }
 
+/**
+ * Seek to an absolute position in seconds.
+ * @param {number} seconds
+ */
+function seekTo(seconds) {
+    if (!ytPlayer) return;
+    ytPlayer.seekTo(seconds, true);
+}
+
 function getCurrentTime() {
     return ytPlayer ? ytPlayer.getCurrentTime() : 0;
 }
@@ -143,6 +152,7 @@ export default {
     isPlaying,
     togglePlay,
     seekRelative,
+    seekTo,
     getCurrentTime,
     getDuration,
     loadVideo,
