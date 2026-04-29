@@ -3,12 +3,13 @@
  * Wires together: player, controls, recorder, session, filesystem.
  */
 
-import { store_get_dirhandle, check_handle } from './lib/filesystem.js';
+import { store_get_dirhandle, check_handle, request_handle_permission } from './lib/filesystem.js';
 import { StgIDB } from './lib/storage.js';
 import player from './player.js';
 import controls from './controls.js';
 import recorder from './recorder.js';
 import session from './session.js';
+import eventNav from './event-nav.js';
 
 // --- State ---
 let dirHandle = null;
@@ -179,6 +180,7 @@ function setupRecordButton() {
                         videoPosition: player.getCurrentTime(),
                     });
                     session.logNoteRecorded(player.getCurrentTime(), filename);
+                    eventNav.reload();
                     btn.textContent = 'Salvo!';
                     setTimeout(() => { btn.textContent = '\u{1F3A4} Gravar Nota'; }, 1500);
                 } else {
@@ -231,31 +233,64 @@ async function main() {
     await loadPlaylists();
     populateVideoSelect();
 
-    // Setup folder button
     const btnFolder = document.getElementById('btn-select-folder');
-    if (btnFolder) {
-        btnFolder.addEventListener('click', async () => {
-            const ok = await initFolder();
-            if (ok) {
-                await startApp();
-            }
-        });
-    }
+    const btnChange = document.getElementById('btn-change-folder');
+    const statusEl = document.getElementById('folder-status');
 
-    // Try to restore a previously persisted folder handle (NO picker dialog)
+    // Try to restore a previously persisted folder handle
+    let storedHandle = null;
     try {
         const stg = new StgIDB(DB_STORE);
         await stg.init();
-        const storedHandle = await stg.get(DIR_KEY);
-        if (storedHandle && await check_handle(storedHandle)) {
+        storedHandle = await stg.get(DIR_KEY);
+    } catch (e) {
+        // IndexedDB unavailable
+    }
+
+    if (storedHandle) {
+        // Check if permission is already granted (silent, no prompt)
+        if (await check_handle(storedHandle)) {
             dirHandle = storedHandle;
             session.setDirHandle(dirHandle);
-            const statusEl = document.getElementById('folder-status');
-            if (statusEl) statusEl.textContent = `Pasta: ${dirHandle.name}`;
             await startApp();
+            return;
         }
-    } catch (e) {
-        // No stored handle or permission denied — stay on setup screen
+
+        // Handle exists but needs user gesture to re-grant permission
+        if (btnFolder) {
+            btnFolder.textContent = `Continuar com "${storedHandle.name}"`;
+            btnFolder.classList.add('btn-continue');
+            if (statusEl) statusEl.textContent = `Pasta anterior: ${storedHandle.name}`;
+
+            btnFolder.addEventListener('click', async () => {
+                if (await request_handle_permission(storedHandle)) {
+                    dirHandle = storedHandle;
+                    session.setDirHandle(dirHandle);
+                    await startApp();
+                } else {
+                    // Permission denied — fall back to picker
+                    const ok = await initFolder();
+                    if (ok) await startApp();
+                }
+            });
+        }
+
+        // Secondary button to pick a different folder
+        if (btnChange) {
+            btnChange.classList.remove('hidden');
+            btnChange.addEventListener('click', async () => {
+                const ok = await initFolder(true);
+                if (ok) await startApp();
+            });
+        }
+    } else {
+        // No stored handle — normal flow with picker
+        if (btnFolder) {
+            btnFolder.addEventListener('click', async () => {
+                const ok = await initFolder();
+                if (ok) await startApp();
+            });
+        }
     }
 }
 
@@ -314,6 +349,23 @@ async function startApp() {
 
     // Setup record button
     setupRecordButton();
+
+    // Init event navigator
+    if (dirHandle) {
+        try {
+            await eventNav.init(dirHandle, {
+                onNavigate: (event) => {
+                    // Switch video if needed
+                    if (event.videoId && event.videoId !== currentVideo?.id) {
+                        selectVideo(event.videoId, event.videoTitle || '');
+                    }
+                    player.seekTo(event.videoPosition);
+                },
+            });
+        } catch (e) {
+            console.warn('Event nav init failed:', e);
+        }
+    }
 
     // Show resume info to user
     if (resumeInfo) {

@@ -13,9 +13,10 @@
     <!-- Setup screen: folder selection -->
     <div id="setup-screen" class="screen">
       <div class="setup-content">
-        <h1>Video Study</h1>
+        <h1>Video Study v22</h1>
         <p>Escolha uma pasta para salvar notas de audio e logs de sessao.</p>
         <button id="btn-select-folder" class="btn-large">Escolher Pasta</button>
+        <button id="btn-change-folder" class="btn-secondary hidden">Escolher outra pasta</button>
         <p id="folder-status" class="status-text"></p>
       </div>
     </div>
@@ -93,6 +94,27 @@
             <!-- Record button -->
             <div class="record-row">
               <button id="btn-record" class="btn-record" disabled>&#127908; Gravar Nota</button>
+            </div>
+
+            <!-- Event navigation -->
+            <div class="event-nav-section">
+              <div class="event-nav-header">
+                <label>Eventos:</label>
+                <select id="event-type-filter" class="interval-select">
+                  <option value="all">Todos</option>
+                  <option value="recording" selected>Gravacoes</option>
+                  <option value="pause">Pausas</option>
+                </select>
+              </div>
+              <div class="event-nav-controls">
+                <button id="btn-event-prev" class="btn-transport btn-sm">&#9664;</button>
+                <span id="event-info" class="event-info">--</span>
+                <button id="btn-event-next" class="btn-transport btn-sm">&#9654;</button>
+              </div>
+              <div id="event-detail" class="event-detail hidden">
+                <span id="event-detail-text" class="event-detail-text"></span>
+                <button id="btn-play-note" class="btn-play-note hidden">&#9654; Ouvir</button>
+              </div>
             </div>
 
             <!-- End session slider -->
