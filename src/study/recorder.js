@@ -114,6 +114,27 @@ async function startRecording() {
 }
 
 /**
+ * Releases microphone stream and AudioContext to free audio routing.
+ */
+function releaseAudioResources() {
+    if (audioStream) {
+        // Stop the raw microphone tracks
+        const raw = audioStream._rawStream;
+        if (raw) {
+            raw.getTracks().forEach(t => t.stop());
+        }
+        audioStream.getTracks().forEach(t => t.stop());
+        audioStream = null;
+    }
+    if (audioContext) {
+        audioContext.close().catch(() => {});
+        audioContext = null;
+    }
+    gainNode = null;
+    destination = null;
+}
+
+/**
  * Stops recording and returns the audio blob.
  * @returns {Promise<Blob|null>}
  */
@@ -128,6 +149,7 @@ function stopRecording() {
             const blob = new Blob(audioChunks, { type: mimeType });
             audioChunks = [];
             _isRecording = false;
+            releaseAudioResources();
             resolve(blob);
         };
         mediaRecorder.stop();
