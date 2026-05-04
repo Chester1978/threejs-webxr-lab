@@ -1,10 +1,14 @@
 /**
  * WebUSB-based serial driver for CH340/CH341 USB-to-serial chips.
- * Used as fallback on Android where Web Serial API doesn't enumerate
- * USB-to-serial adapters.
  *
- * CH340 protocol reference: Linux kernel drivers/usb/serial/ch341.c
- * Init sequence mirrors ch341_open() → ch341_set_termios() + ch341_configure()
+ * Init sequence ported from usb-serial-for-android Ch34xSerialDriver.java
+ * (the same library used by native Android serial terminal apps).
+ * This differs significantly from the Linux kernel ch341.c driver.
+ *
+ * Key differences from Linux kernel:
+ *   - Baud rate: factor >>= 3 (not >>= 2), divisor |= 0x80
+ *   - Second baud register write to 0x0F2C
+ *   - Second serial init with magic values (0xA1, 0x501F, 0xD90A)
  */
 
 // ── Known USB-to-serial chips ──────────────────────────────────
@@ -15,7 +19,7 @@ const USB_FILTERS = [
     { vendorId: 0x1A86, productId: 0x7522 }, // CH340K
 ];
 
-// ── CH340 constants (from Linux kernel ch341.c) ────────────────
+// ── CH340 constants (from usb-serial-for-android) ──────────────
 
 const CH341_REQ_READ_VERSION = 0x5F;
 const CH341_REQ_READ_REG     = 0x95;
@@ -23,42 +27,40 @@ const CH341_REQ_WRITE_REG    = 0x9A;
 const CH341_REQ_SERIAL_INIT  = 0xA1;
 const CH341_REQ_MODEM_CTRL   = 0xA4;
 
-const CH341_REG_BAUD1 = 0x12;
-const CH341_REG_BAUD2 = 0x13;
-const CH341_REG_LCR   = 0x18;
-const CH341_REG_LCR2  = 0x25;
-
 const CH341_BAUDBASE_FACTOR = 1532620800;
 const CH341_BAUDBASE_DIVMAX = 3;
 
-const CH341_LCR_ENABLE_RX = 0x80;
-const CH341_LCR_ENABLE_TX = 0x40;
-const CH341_LCR_CS8       = 0x03;
-const CH341_LCR_8N1 = CH341_LCR_ENABLE_RX | CH341_LCR_ENABLE_TX | CH341_LCR_CS8; // 0xC3
+const CH341_LCR_8N1 = 0xC3; // ENABLE_RX | ENABLE_TX | CS8
 
-const CH341_BIT_DTR = 0x20;
-const CH341_BIT_RTS = 0x40;
+const SCL_DTR = 0x20;
+const SCL_RTS = 0x40;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── Baud rate calculation (from Linux kernel ch341.c) ──────────
+function toHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+}
+
+// ── Baud rate (usb-serial-for-android method) ──────────────────
 
 function ch340BaudParams(baudRate) {
+    if (baudRate === 921600) {
+        return { factor: 0xF300, divisor: 7 };
+    }
+
     let factor = Math.floor(CH341_BAUDBASE_FACTOR / baudRate);
     let divisor = CH341_BAUDBASE_DIVMAX;
 
     while (factor > 0xFFF0 && divisor > 0) {
-        factor >>= 2;
+        factor >>= 3;  // NOTE: >>3 not >>2 (differs from Linux kernel!)
         divisor--;
     }
     if (factor > 0xFFF0) throw new Error(`Baud rate ${baudRate} not supported`);
 
     factor = 0x10000 - factor;
-    return { factor, divisor };
-}
+    divisor |= 0x0080;  // NOTE: set bit 7 (differs from Linux kernel!)
 
-function toHex(bytes) {
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    return { factor, divisor };
 }
 
 // ── WebUSBSerial class ─────────────────────────────────────────
@@ -81,14 +83,16 @@ export class WebUSBSerial {
 
     async requestDevice() {
         this._device = await navigator.usb.requestDevice({ filters: USB_FILTERS });
-        this._log(`USB device: VID=0x${this._device.vendorId.toString(16)} PID=0x${this._device.productId.toString(16)} "${this._device.productName || ''}"`);
+        this._log(`USB: VID=0x${this._device.vendorId.toString(16)} PID=0x${this._device.productId.toString(16)} "${this._device.productName || ''}"`);
         return this._device;
     }
 
+    /**
+     * Open + init following usb-serial-for-android Ch34xSerialDriver.initialize()
+     */
     async open(baudRate = 9600) {
         const dev = this._device;
         await dev.open();
-        this._log('USB device opened');
 
         if (dev.configuration === null) {
             await dev.selectConfiguration(1);
@@ -96,116 +100,77 @@ export class WebUSBSerial {
 
         const iface = dev.configuration.interfaces[0];
         await dev.claimInterface(iface.interfaceNumber);
-        this._log(`Claimed interface ${iface.interfaceNumber}`);
 
-        // Find all endpoints
+        // Find endpoints
         for (const ep of iface.alternate.endpoints) {
-            this._log(`  EP${ep.endpointNumber} ${ep.direction} ${ep.type} pktSize=${ep.packetSize}`);
+            this._log(`  EP${ep.endpointNumber} ${ep.direction} ${ep.type} pkt=${ep.packetSize}`);
             if (ep.type === 'bulk' && ep.direction === 'in')       this._endpointIn = ep;
             if (ep.type === 'bulk' && ep.direction === 'out')      this._endpointOut = ep;
             if (ep.type === 'interrupt' && ep.direction === 'in')  this._endpointInterrupt = ep;
         }
+        if (!this._endpointOut) throw new Error('No bulk OUT endpoint');
 
-        if (!this._endpointOut) throw new Error('No bulk OUT endpoint found');
+        // ── Init sequence (usb-serial-for-android) ──
 
-        // ── CH340 init (mirrors Linux kernel ch341_open) ──
+        // 1. Read version
+        const ver = await this._vendorIn(CH341_REQ_READ_VERSION, 0, 0);
+        this._log(`1. version: ${ver}`);
 
-        // Step 1: ch341_set_termios — set baud + LCR first
-        await this._setBaudLCR(baudRate);
-        this._log('Step 1: baud+LCR (pre-init)');
-        await sleep(50);
-
-        // Step 2a: read chip version
-        try {
-            const vr = await dev.controlTransferIn({
-                requestType: 'vendor', recipient: 'device',
-                request: CH341_REQ_READ_VERSION, value: 0, index: 0,
-            }, 2);
-            if (vr.data && vr.data.byteLength >= 2) {
-                const v = new Uint8Array(vr.data.buffer);
-                this._log(`Step 2a: version 0x${v[0].toString(16)} 0x${v[1].toString(16)}`);
-            }
-        } catch (e) {
-            this._log(`Step 2a: version read failed (${e.message})`);
-        }
-        await sleep(50);
-
-        // Step 2b: serial init
+        // 2. Serial init #1
         await this._vendorOut(CH341_REQ_SERIAL_INIT, 0, 0);
-        this._log('Step 2b: serial init');
-        await sleep(50);
+        this._log('2. serial init #1');
 
-        // Step 2c: set baud + LCR again
-        await this._setBaudLCR(baudRate);
-        this._log('Step 2c: baud+LCR (post-init)');
-        await sleep(50);
+        // 3. Set baud rate (first time)
+        await this._setBaudRate(baudRate);
+        this._log('3. baud set');
 
-        // Step 2d: handshake DTR + RTS
-        const mcr = CH341_BIT_DTR | CH341_BIT_RTS;
-        const handshake = (~mcr) & 0xFFFF;
-        await this._vendorOut(CH341_REQ_MODEM_CTRL, handshake, 0);
-        this._log(`Step 2d: handshake (0x${handshake.toString(16)})`);
-        await sleep(50);
+        // 4. Check LCR state
+        const lcr1 = await this._vendorIn(CH341_REQ_READ_REG, 0x2518, 0);
+        this._log(`4. LCR state: ${lcr1}`);
 
-        // Step 3: Start interrupt endpoint polling
-        // (kernel does usb_submit_urb for interrupt — required for some CH340s)
+        // 5. Set LCR: 8N1
+        await this._vendorOut(CH341_REQ_WRITE_REG, 0x2518, CH341_LCR_8N1);
+        this._log('5. LCR=0xC3 (8N1)');
+
+        // 6. Check state
+        const st1 = await this._vendorIn(CH341_REQ_READ_REG, 0x0706, 0);
+        this._log(`6. state: ${st1}`);
+
+        // 7. Serial init #2 (magic values — critical for CH340 on Android!)
+        await this._vendorOut(CH341_REQ_SERIAL_INIT, 0x501F, 0xD90A);
+        this._log('7. serial init #2 (0x501F, 0xD90A)');
+
+        // 8. Set baud rate again
+        await this._setBaudRate(baudRate);
+        this._log('8. baud set again');
+
+        // 9. Set control lines: DTR + RTS
+        const ctrlVal = (~(SCL_DTR | SCL_RTS)) & 0xFFFF;
+        await this._vendorOut(CH341_REQ_MODEM_CTRL, ctrlVal, 0);
+        this._log(`9. DTR+RTS (0x${ctrlVal.toString(16)})`);
+
+        // 10. Check state
+        const st2 = await this._vendorIn(CH341_REQ_READ_REG, 0x0706, 0);
+        this._log(`10. state: ${st2}`);
+
+        // Start interrupt polling
         this._startInterruptPoll();
-        this._log('Step 3: interrupt poll started');
-        await sleep(100);
 
-        // Step 4: Verify — read back LCR register
-        try {
-            const rr = await dev.controlTransferIn({
-                requestType: 'vendor', recipient: 'device',
-                request: CH341_REQ_READ_REG,
-                value: (CH341_REG_LCR2 << 8) | CH341_REG_LCR,
-                index: 0,
-            }, 2);
-            if (rr.data && rr.data.byteLength >= 2) {
-                const v = new Uint8Array(rr.data.buffer);
-                this._log(`Step 4: verify LCR read = 0x${v[0].toString(16)} 0x${v[1].toString(16)}`);
-            }
-        } catch (e) {
-            this._log(`Step 4: verify failed (${e.message})`);
-        }
-
-        this._log(`Init complete: ${baudRate} baud, 8N1`);
+        this._log(`Init OK: ${baudRate} baud`);
     }
 
-    async _setBaudLCR(baudRate) {
+    async _setBaudRate(baudRate) {
         const { factor, divisor } = ch340BaudParams(baudRate);
-        const baudVal = (CH341_REG_BAUD2 << 8) | CH341_REG_BAUD1;
-        const baudIdx = (factor & 0xFF00) | divisor;
-        await this._vendorOut(CH341_REQ_WRITE_REG, baudVal, baudIdx);
-        this._log(`  baud 0x${baudVal.toString(16)}=0x${baudIdx.toString(16)}`);
 
-        const lcrVal = (CH341_REG_LCR2 << 8) | CH341_REG_LCR;
-        await this._vendorOut(CH341_REQ_WRITE_REG, lcrVal, CH341_LCR_8N1);
-        this._log(`  LCR 0x${lcrVal.toString(16)}=0x${CH341_LCR_8N1.toString(16)}`);
-    }
+        // Register 0x1312: factor high byte + divisor
+        const val1 = (factor & 0xFF00) | divisor;
+        await this._vendorOut(CH341_REQ_WRITE_REG, 0x1312, val1);
 
-    _startInterruptPoll() {
-        if (!this._endpointInterrupt) return;
-        this._interruptPolling = true;
+        // Register 0x0F2C: factor low byte (second register — missing from Linux kernel!)
+        const val2 = factor & 0xFF;
+        await this._vendorOut(CH341_REQ_WRITE_REG, 0x0F2C, val2);
 
-        const poll = async () => {
-            if (!this._interruptPolling || !this._device) return;
-            try {
-                const result = await this._device.transferIn(
-                    this._endpointInterrupt.endpointNumber, 8
-                );
-                if (result.data && result.data.byteLength > 0) {
-                    const v = new Uint8Array(result.data.buffer);
-                    this._log(`[int] ${toHex(v)}`);
-                }
-            } catch {
-                // device closed or transfer cancelled
-                return;
-            }
-            if (this._interruptPolling) poll();
-        };
-
-        poll();
+        this._log(`  baud: 0x1312=0x${val1.toString(16)} 0x0F2C=0x${val2.toString(16)}`);
     }
 
     async _vendorOut(request, value, index) {
@@ -216,6 +181,38 @@ export class WebUSBSerial {
             value: value & 0xFFFF,
             index: index & 0xFFFF,
         });
+    }
+
+    async _vendorIn(request, value, index) {
+        try {
+            const result = await this._device.controlTransferIn({
+                requestType: 'vendor',
+                recipient: 'device',
+                request,
+                value: value & 0xFFFF,
+                index: index & 0xFFFF,
+            }, 2);
+            if (result.data && result.data.byteLength > 0) {
+                const v = new Uint8Array(result.data.buffer);
+                return `0x${Array.from(v).map(b => b.toString(16).padStart(2, '0')).join(' 0x')}`;
+            }
+            return '(empty)';
+        } catch (e) {
+            return `(err: ${e.message})`;
+        }
+    }
+
+    _startInterruptPoll() {
+        if (!this._endpointInterrupt) return;
+        this._interruptPolling = true;
+        const poll = async () => {
+            if (!this._interruptPolling || !this._device) return;
+            try {
+                await this._device.transferIn(this._endpointInterrupt.endpointNumber, 8);
+            } catch { return; }
+            if (this._interruptPolling) poll();
+        };
+        poll();
     }
 
     async write(data) {
@@ -235,7 +232,7 @@ export class WebUSBSerial {
             ]);
             if (result.data && result.data.byteLength > 0) {
                 const text = this._decoder.decode(result.data);
-                this._log(`[rx] ${result.data.byteLength}B: "${text.trim()}"`);
+                this._log(`[rx] "${text.trim()}"`);
                 return text;
             }
             return '';
@@ -246,16 +243,12 @@ export class WebUSBSerial {
 
     async close() {
         this._interruptPolling = false;
-        try {
-            await this._vendorOut(CH341_REQ_MODEM_CTRL, 0xFFFF, 0);
-        } catch { /* ignore */ }
+        try { await this._vendorOut(CH341_REQ_MODEM_CTRL, 0xFFFF, 0); } catch {}
         try {
             const iface = this._device?.configuration?.interfaces?.[0];
             if (iface) await this._device.releaseInterface(iface.interfaceNumber);
-        } catch { /* ignore */ }
-        try {
-            await this._device?.close();
-        } catch { /* ignore */ }
+        } catch {}
+        try { await this._device?.close(); } catch {}
         this._device = null;
         this._endpointIn = null;
         this._endpointOut = null;
