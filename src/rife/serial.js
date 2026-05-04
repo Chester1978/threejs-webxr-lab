@@ -1,6 +1,6 @@
 /**
- * FY3200S Web Serial driver.
- * Ports the Python protocol from pyFY3200S to browser Web Serial API.
+ * FY3200S serial driver.
+ * Uses Web Serial API on desktop, WebUSB (CH340 driver) on Android.
  *
  * Protocol: text commands at 9600 baud, newline terminated.
  *   Channel A: set prefix 'b', get prefix 'c'
@@ -11,11 +11,23 @@
  *   Device ID:  a\n
  */
 
+import { WebUSBSerial } from './webusb-serial.js';
+
+// ── Backend state ───────────────────────────────────────────────
+
+let _mode = null; // 'serial' | 'usb'
+
+// Web Serial backend
 let _port = null;
 let _writer = null;
 let _reader = null;
 let _readableStreamClosed = null;
 let _writableStreamClosed = null;
+
+// WebUSB backend
+let _usbSerial = null;
+
+// Shared
 let _cycleTimer = null;
 let _stopRequested = false;
 let _onLog = null;
@@ -24,14 +36,33 @@ function log(msg) {
     if (_onLog) _onLog(msg);
 }
 
+function isAndroid() {
+    return /Android/i.test(navigator.userAgent);
+}
+
 // ── Connection ──────────────────────────────────────────────────
 
 export async function connect({ baudRate = 9600, onLog } = {}) {
-    if (!('serial' in navigator)) {
-        throw new Error('Web Serial API not supported in this browser');
-    }
     _onLog = onLog || null;
 
+    // On Android or when Web Serial is unavailable, use WebUSB
+    const useWebUSB = isAndroid() || !('serial' in navigator);
+
+    if (useWebUSB) {
+        if (!WebUSBSerial.isSupported()) {
+            throw new Error('Nem Web Serial nem WebUSB suportados neste navegador');
+        }
+        log('Using WebUSB (Android mode)...');
+        _usbSerial = new WebUSBSerial();
+        await _usbSerial.requestDevice();
+        await _usbSerial.open(baudRate);
+        _mode = 'usb';
+        log(`Connected via USB (${baudRate} baud)`);
+        return true;
+    }
+
+    // Desktop: use Web Serial API
+    log('Using Web Serial API...');
     _port = await navigator.serial.requestPort();
     await _port.open({ baudRate });
 
@@ -43,45 +74,90 @@ export async function connect({ baudRate = 9600, onLog } = {}) {
     _readableStreamClosed = _port.readable.pipeTo(decoder.writable);
     _reader = decoder.readable.getReader();
 
-    log(`Connected (${baudRate} baud)`);
+    _mode = 'serial';
+    log(`Connected via Serial (${baudRate} baud)`);
     return true;
 }
 
 export async function disconnect() {
     stopCycle();
 
-    if (_reader) {
-        try { _reader.cancel(); } catch {}
-        await _readableStreamClosed.catch(() => {});
-        _reader = null;
+    if (_mode === 'usb') {
+        if (_usbSerial) {
+            await _usbSerial.close();
+            _usbSerial = null;
+        }
+    } else if (_mode === 'serial') {
+        if (_reader) {
+            try { _reader.cancel(); } catch {}
+            await _readableStreamClosed.catch(() => {});
+            _reader = null;
+        }
+        if (_writer) {
+            try { _writer.close(); } catch {}
+            await _writableStreamClosed.catch(() => {});
+            _writer = null;
+        }
+        if (_port) {
+            await _port.close();
+            _port = null;
+        }
     }
-    if (_writer) {
-        try { _writer.close(); } catch {}
-        await _writableStreamClosed.catch(() => {});
-        _writer = null;
-    }
-    if (_port) {
-        await _port.close();
-        _port = null;
-    }
+
+    _mode = null;
     log('Disconnected');
 }
 
 export function isConnected() {
-    return _port !== null && _writer !== null;
+    if (_mode === 'usb') return _usbSerial !== null;
+    if (_mode === 'serial') return _port !== null && _writer !== null;
+    return false;
+}
+
+export function getMode() {
+    return _mode;
 }
 
 // ── Low-level commands ──────────────────────────────────────────
 
 async function writeCmd(cmd) {
-    if (!_writer) throw new Error('Not connected');
+    const data = cmd + '\n';
     log(`[send] ${cmd}`);
-    await _writer.write(cmd + '\n');
+
+    if (_mode === 'usb') {
+        if (!_usbSerial) throw new Error('Not connected');
+        await _usbSerial.write(data);
+    } else if (_mode === 'serial') {
+        if (!_writer) throw new Error('Not connected');
+        await _writer.write(data);
+    } else {
+        throw new Error('Not connected');
+    }
+}
+
+async function readResponse(timeout = 1000) {
+    if (_mode === 'usb') {
+        return _usbSerial ? await _usbSerial.read(timeout) : '';
+    }
+    if (_mode === 'serial' && _reader) {
+        try {
+            const { value } = await Promise.race([
+                _reader.read(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeout)),
+            ]);
+            return value?.trim() || '';
+        } catch {
+            return '';
+        }
+    }
+    return '';
 }
 
 function channelPrefix(channel) {
     return channel === 1 ? 'd' : 'b';
 }
+
+// ── Device commands ─────────────────────────────────────────────
 
 export async function setFrequency(freqHz, channel = 0) {
     const val = Math.round(freqHz * 100);
@@ -125,29 +201,12 @@ export async function setOffset(offset, channel = 0) {
 
 export async function getDeviceId() {
     await writeCmd('a');
-    // Try to read response
-    try {
-        const { value } = await Promise.race([
-            _reader.read(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1000)),
-        ]);
-        return value?.trim() || '';
-    } catch {
-        return '(no response)';
-    }
+    const resp = await readResponse(1000);
+    return resp || '(no response)';
 }
 
 // ── Cycle control ───────────────────────────────────────────────
 
-/**
- * Start cycling through frequencies.
- * @param {number[]} frequencies - Hz values
- * @param {number} intervalSec - seconds per frequency
- * @param {number} totalSec - total duration in seconds
- * @param {number} channel - 0=CH1, 1=CH2, 2=both
- * @param {function} onTick - callback({ freq, index, total, elapsed, remaining })
- * @param {function} onDone - callback when cycle completes
- */
 export function startCycle({ frequencies, intervalSec, totalSec, channel = 0, onTick, onDone }) {
     if (!frequencies || frequencies.length === 0) return;
 
@@ -199,7 +258,7 @@ export function isCycling() {
     return _cycleTimer !== null && !_stopRequested;
 }
 
-// ── Waveform enum (for reference) ──────────────────────────────
+// ── Waveform enum ──────────────────────────────────────────────
 
 export const Waveform = {
     sine: 0,

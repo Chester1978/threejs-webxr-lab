@@ -101,6 +101,8 @@ async function handleConnect() {
     try {
         await serial.connect({ onLog: appendLog });
         updateConnectionUI(true);
+        const mode = serial.getMode();
+        connectionStatus.textContent = `Conectado (${mode === 'usb' ? 'WebUSB' : 'Serial'})`;
 
         // Try to get device ID
         const id = await serial.getDeviceId();
@@ -175,12 +177,17 @@ async function handleSendFreq() {
 // ── Web Serial API check ────────────────────────────────────────
 
 function checkWebSerialSupport() {
-    if (!('serial' in navigator)) {
+    const hasSerial = 'serial' in navigator;
+    const hasUSB = 'usb' in navigator;
+    if (!hasSerial && !hasUSB) {
         btnConnect.disabled = true;
-        btnConnect.textContent = 'Web Serial nao suportado';
+        btnConnect.textContent = 'Navegador nao suportado';
         connectionStatus.textContent = 'Use Chrome/Edge no Android ou desktop';
         connectionStatus.classList.add('error');
         return false;
+    }
+    if (!hasSerial && hasUSB) {
+        appendLog('Web Serial indisponivel, usando WebUSB (CH340)');
     }
     return true;
 }
