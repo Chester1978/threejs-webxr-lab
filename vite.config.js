@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         main: resolve(__dirname, "index.html"),
         study: resolve(__dirname, "study/index.html"),
+        rife: resolve(__dirname, "rife/index.html"),
       },
     },
   },

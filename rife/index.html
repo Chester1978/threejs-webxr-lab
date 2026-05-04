@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Rife Controller</title>
+    <link rel="stylesheet" href="/src/rife/style.css" />
+  </head>
+  <body>
+    <div class="rife-app">
+      <!-- Header -->
+      <header class="rife-header">
+        <h1>Rife Controller</h1>
+        <span id="app-version" class="version">v23</span>
+      </header>
+
+      <!-- Connection -->
+      <section class="section connection-section">
+        <button id="btn-connect" class="btn-connect">Conectar Dispositivo</button>
+        <p id="connection-status" class="status-text">Desconectado</p>
+      </section>
+
+      <!-- Preset selection -->
+      <section class="section preset-section">
+        <label for="preset-select">Preset:</label>
+        <select id="preset-select" class="rife-select"></select>
+        <div id="freq-display" class="freq-display">--</div>
+      </section>
+
+      <!-- Parameters -->
+      <section class="section params-section">
+        <div class="param-row">
+          <label for="interval-input">Intervalo (seg):</label>
+          <input id="interval-input" type="number" class="param-input" value="5" min="0.1" max="600" step="0.1" />
+        </div>
+        <div class="param-row">
+          <label for="duration-input">Duracao total (min):</label>
+          <input id="duration-input" type="number" class="param-input" value="10" min="1" max="600" step="1" />
+        </div>
+        <div class="param-row">
+          <label for="channel-select">Canal:</label>
+          <select id="channel-select" class="rife-select small">
+            <option value="0">CH1</option>
+            <option value="1">CH2</option>
+            <option value="2">Ambos</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Start/Stop -->
+      <section class="section action-section">
+        <button id="btn-start" class="btn-action btn-start" disabled>INICIAR</button>
+        <button id="btn-stop" class="btn-action btn-stop hidden">PARAR</button>
+      </section>
+
+      <!-- Live status -->
+      <section id="live-status" class="section live-section hidden">
+        <div class="live-row">
+          <span class="live-label">Frequencia:</span>
+          <span id="current-freq" class="live-value freq-value">-- Hz</span>
+        </div>
+        <div class="live-row">
+          <span class="live-label">Progresso:</span>
+          <span id="cycle-progress" class="live-value">--</span>
+        </div>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <div class="live-row">
+          <span class="live-label">Tempo:</span>
+          <span id="time-display" class="live-value">00:00 / 00:00</span>
+        </div>
+      </section>
+
+      <!-- Manual frequency -->
+      <section class="section manual-section">
+        <label>Frequencia manual:</label>
+        <div class="manual-row">
+          <input id="manual-freq" type="number" class="param-input" placeholder="Hz" min="0" max="24000000" step="0.01" />
+          <button id="btn-send-freq" class="btn-send" disabled>Enviar</button>
+        </div>
+      </section>
+
+      <!-- Log -->
+      <section class="section log-section">
+        <label>Log:</label>
+        <div id="log-output" class="log-output"></div>
+      </section>
+    </div>
+
+    <script type="module" src="/src/rife/app.js"></script>
+  </body>
+</html>
