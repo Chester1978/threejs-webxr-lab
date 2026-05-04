@@ -25,6 +25,7 @@ const timeDisplay = document.getElementById('time-display');
 const manualFreqInput = document.getElementById('manual-freq');
 const btnSendFreq = document.getElementById('btn-send-freq');
 const logOutput = document.getElementById('log-output');
+const btnCopyLog = document.getElementById('btn-copy-log');
 
 // ── State ───────────────────────────────────────────────────────
 
@@ -204,6 +205,13 @@ function init() {
     btnStart.addEventListener('click', handleStart);
     btnStop.addEventListener('click', handleStop);
     btnSendFreq.addEventListener('click', handleSendFreq);
+    btnCopyLog.addEventListener('click', () => {
+        const text = logOutput.innerText;
+        navigator.clipboard.writeText(text).then(
+            () => { btnCopyLog.textContent = 'Copiado!'; setTimeout(() => { btnCopyLog.textContent = 'Copiar'; }, 1500); },
+            () => { btnCopyLog.textContent = 'Erro'; setTimeout(() => { btnCopyLog.textContent = 'Copiar'; }, 1500); },
+        );
+    });
 
     // Allow Enter on manual freq input
     manualFreqInput.addEventListener('keydown', (e) => {

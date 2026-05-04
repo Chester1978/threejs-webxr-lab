@@ -281,6 +281,31 @@ html, body {
 }
 
 /* ================================================================
+   Log Header
+   ================================================================ */
+
+.log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.btn-copy {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid #555;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+
+.btn-copy:active {
+    background: var(--bg-control);
+}
+
+/* ================================================================
    Manual Frequency
    ================================================================ */
 
