@@ -53,7 +53,7 @@ export async function connect({ baudRate = 9600, onLog } = {}) {
             throw new Error('Nem Web Serial nem WebUSB suportados neste navegador');
         }
         log('Using WebUSB (Android mode)...');
-        _usbSerial = new WebUSBSerial();
+        _usbSerial = new WebUSBSerial(log);
         await _usbSerial.requestDevice();
         await _usbSerial.open(baudRate);
         _mode = 'usb';
