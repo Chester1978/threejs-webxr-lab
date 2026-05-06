@@ -6,8 +6,9 @@ import { createTouchPanel } from "./touchPanel.js";
 import { createPdfPanel } from "./pdfPanel.js";
 import { createDebugPanel } from "./debugPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
+import { exportSceneAsUSDZ } from "./usdzExport.js";
 
-const APP_VERSION = 23;
+const APP_VERSION = 24;
 
 // --- Workaround emulador Meta XR ---
 // O polyfill do emulador cria XRSessions "fake" que o constructor nativo
@@ -22,7 +23,7 @@ const _savedXRWebGLBinding = globalThis.XRWebGLBinding;
 globalThis.XRWebGLBinding = undefined;
 
 export function createApp() {
-  const { scene, worldRoot, objects, merkabah } = createSceneWorld();
+  const { scene, worldRoot, objects, merkabah, shapes } = createSceneWorld();
 
   const camera = new THREE.PerspectiveCamera(
     70,
@@ -43,6 +44,25 @@ export function createApp() {
   const vrButtonSlot = document.querySelector("#vr-button-slot");
   vrButton.classList.add("vr-entry");
   vrButtonSlot?.appendChild(vrButton);
+
+  // USDZ export button
+  const exportBtn = document.querySelector("#export-usdz-btn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      exportBtn.disabled = true;
+      exportBtn.textContent = "Exportando…";
+      exportSceneAsUSDZ(shapes)
+        .then(() => {
+          exportBtn.textContent = "Exportar USDZ";
+          exportBtn.disabled = false;
+        })
+        .catch((err) => {
+          console.error("USDZ export failed:", err);
+          exportBtn.textContent = "Erro – tentar novamente";
+          exportBtn.disabled = false;
+        });
+    });
+  }
 
   const clock = new THREE.Clock();
   let latestTrackedHands = [];
