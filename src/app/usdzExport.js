@@ -27,26 +27,31 @@ export async function exportSceneAsUSDZ(shapes) {
   pedestal.name = "Pedestal";
   exportScene.add(pedestal);
 
-  // Clone shapes — position them relative to pedestal top (y=0.175)
-  const pedestalTop = 0.175;
+  // Clone shapes — use exact offsets from pedestal center in original scene.
+  // Original scene (scene.js): pedestal Y=-0.98, so shape offset = shape.y - (-0.98)
+  // Here pedestal is at Y=0, so shapes go at their offset directly.
+  const PEDESTAL_ORIG_Y = -0.98;
 
   const pyramidClone = pyramid.clone();
   pyramidClone.name = "Pyramid";
-  pyramidClone.position.set(-1.35, pedestalTop + 0.65, 0.2);
+  pyramidClone.position.set(-1.35, -0.15 - PEDESTAL_ORIG_Y, 0.2);
   pyramidClone.rotation.copy(pyramid.rotation);
   exportScene.add(pyramidClone);
 
   const squareClone = square.clone();
   squareClone.name = "Square";
-  squareClone.position.set(0, pedestalTop + 0.6, 0);
+  squareClone.position.set(0, -0.1 - PEDESTAL_ORIG_Y, 0);
   squareClone.rotation.copy(square.rotation);
   exportScene.add(squareClone);
 
   const cylinderClone = cylinder.clone();
   cylinderClone.name = "Cylinder";
-  cylinderClone.position.set(1.35, pedestalTop + 0.725, -0.18);
+  cylinderClone.position.set(1.35, 0.02 - PEDESTAL_ORIG_Y, -0.18);
   cylinderClone.rotation.copy(cylinder.rotation);
   exportScene.add(cylinderClone);
+
+  // Ensure world matrices are computed before export
+  exportScene.updateMatrixWorld(true);
 
   // Export
   const exporter = new USDZExporter();
