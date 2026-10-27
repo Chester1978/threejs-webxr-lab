@@ -8,7 +8,7 @@ import { createDebugPanel } from "./debugPanel.js";
 import { createXRHandGestures } from "./xrHands.js";
 import { exportSceneAsUSDZ } from "./usdzExport.js";
 
-const APP_VERSION = 24;
+const APP_VERSION = 25;
 
 // --- Workaround emulador Meta XR ---
 // O polyfill do emulador cria XRSessions "fake" que o constructor nativo

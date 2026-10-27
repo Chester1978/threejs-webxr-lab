@@ -43,6 +43,8 @@ export const PRESETS = [
     { id: 'prostate', name: 'Prostate', freqs: [2128, 2008, 2720, 664, 728, 408, 9.39, 2127, 2008, 727, 690, 666, 465, 880, 802, 787, 727, 125, 95, 73, 72, 20, 9, 9.19] },
     { id: 'relaxation', name: 'Relaxation', freqs: [6000, 10, 7.83] },
     { id: 'reinaldo', name: 'Reinaldo', freqs: [396, 528, 728, 444], interval: 40 },
+    { id: 'gono1', name: 'Gono1', freqs: [600, 660, 712] },
+    { id: 'gono2', name: 'Gono2', freqs: [625, 650, 690, 727, 787, 880] },
 
     // --- Brain waves ---
     { id: 'brain_alpha', name: 'Brain Alpha', freqs: [13, 15, 18], interval: 0.2 },
